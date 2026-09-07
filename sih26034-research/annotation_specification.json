@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SIH26034_Ground_Truth_Annotation_Specification",
+  "description": "Schema for annotating Indian FMCG packaging imagery with spatial bounding boxes and LMPC rule compliance ground truth.",
+  "type": "object",
+  "required": ["image_id", "metadata", "bounding_boxes", "declarations", "compliance_ground_truth"],
+  "properties": {
+    "image_id": { "type": "string" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "packaging_type": { "enum": ["carton", "cylindrical_bottle", "flexible_pouch", "tin_can"] },
+        "capture_angle": { "enum": ["front_pdp", "back_panel", "top_lid", "bottom", "side_panel"] },
+        "has_reference_marker": { "type": "boolean" },
+        "reference_marker_type": { "type": "string" }
+      },
+      "required": ["packaging_type", "capture_angle", "has_reference_marker"]
+    },
+    "bounding_boxes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "enum": ["PDP", "Barcode", "NutritionTable", "MRP_Area", "MfgDate_Area", "NetQty_Area", "Address_Area", "ConsumerCare_Area"] },
+          "bbox_xyxy": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+          "transcription": { "type": "string" }
+        },
+        "required": ["label", "bbox_xyxy", "transcription"]
+      }
+    },
+    "declarations": {
+      "type": "object",
+      "properties": {
+        "manufacturer_name": { "type": "string" },
+        "manufacturer_address": { "type": "string" },
+        "country_of_origin": { "type": ["string", "null"] },
+        "generic_name": { "type": "string" },
+        "net_quantity_value": { "type": "number" },
+        "net_quantity_unit": { "type": "string" },
+        "mfg_month_year": { "type": "string" },
+        "mrp_currency": { "type": "string" },
+        "mrp_value": { "type": "number" },
+        "mrp_includes_taxes": { "type": "boolean" },
+        "consumer_phone": { "type": "string" },
+        "consumer_email": { "type": "string" },
+        "unit_sale_price": { "type": ["number", "null"] }
+      }
+    },
+    "compliance_ground_truth": {
+      "type": "object",
+      "properties": {
+        "overall_status": { "enum": ["PASS", "FAIL", "NEEDS_REVIEW", "INSUFFICIENT_EVIDENCE"] },
+        "violations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rule_code": { "enum": ["R6(1)(a)", "R6(1)(aa)", "R6(1)(b)", "R6(1)(c)", "R6(1)(d)", "R6(1)(e)", "R6(1)(f)", "R6(11)", "R7(1)", "R7(2)", "R26"] },
+              "statutory_reference": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["overall_status"]
+    }
+  }
+}

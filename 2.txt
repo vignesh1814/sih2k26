@@ -1,0 +1,841 @@
+SIH26034 Research & Pre-Engineering Dossier
+A. Executive Summary
+This dossier delivers a comprehensive pre-engineering analysis and architectural blueprint for Smart India Hackathon (SIH) 2026 Problem Statement SIH26034. The fundamental challenge involves designing a software system capable of verifying the compliance of packaged commodities against the Legal Metrology (Packaged Commodities) Rules, 2011, leveraging optical scans of products, images, and labels1 [FACT]. The underlying engineering complexity emerges at the intersection of computer vision (CV) for spatial localization, optical character recognition (OCR) for transcription, structured information extraction, and deterministic rules-based validation.
+The analysis concludes that while extracting textual declarations and performing deterministic validations are highly automatable using modern multimodal pipelines—specifically pairing high-accuracy OCR engines like PaddleOCR with strict schema-enforced Large Language Models (LLMs)—the stringent geometric and physical measurement requirements of the legal framework present profound challenges [ENGINEERING-INFERENCE]. Specifically, the mandates governing the absolute physical height of numerals in millimeters and the precise area of the Principal Display Panel (PDP) cannot be reliably resolved via uncalibrated monocular vision systems without physical reference objects [FACT]3. Consequently, the recommended system architecture aggressively optimizes for a Human-in-the-Loop (HITL) paradigm. High-confidence deterministic checks are fully automated, while spatial compliances and anomalous detections trigger probabilistic warnings requiring human validation, ensuring the system remains legally defensible.
+B. SIH26034 Problem Analysis
+The official problem statement mandates the creation of a "Software System to check compliance of Packaged Commodities under Legal Metrology (Packaged Commodities) Rules, 2011 by scanning products, images and labels"1 [FACT]. The overarching mission is discovery and regulatory enforcement automation.
+By deconstructing the problem statement, the core operations require the system to ingest varied images of commodity packaging, encompassing diverse topographies such as flat cartons, cylindrical bottles, and reflective flexible pouches. Once ingested, the system must localize and extract relevant text, spatial features, and barcodes. These extracted entities must then be semantically mapped to the mandatory declarations defined by the Legal Metrology Rules [SOURCED-INTERPRETATION]. Crucially, the system must execute a temporally versioned rule engine to verify the presence, format, and mathematical validity of these declarations against the specific rule set active at the time of the product's manufacture, ultimately flagging violations and generating an auditable compliance report [ENGINEERING-INFERENCE].
+C. Complete Requirements Matrix
+The following matrix categorizes the system requirements, distinguishing explicitly stated functional goals from the non-functional technical inferences necessary to construct a production-ready system.
+
+Req ID
+Requirement
+Explicit in PS?
+Interpretation / Technical Implication
+Priority
+Epistemic Tag
+F-01
+Image Ingestion
+Y
+The platform must accept uploads or live camera feeds of multi-angle product labels1.
+High
+FACT
+F-02
+Multimodal Text Extraction
+Y
+The architecture requires the extraction of dense, mixed-typography text on diverse packaging materials2.
+High
+FACT
+F-03
+Compliance Rule Execution
+Y
+Extracted text must be validated against the temporal parameters of LMPC 2011 Rules1.
+High
+FACT
+F-04
+Declaration Detection
+N
+The system must target specific entities (Manufacturer, MRP, Net Quantity). This implies Named Entity Recognition (NER) or layout parsing.
+High
+ENGINEERING-INFERENCE
+F-05
+Physical Dimension Estimation
+N
+Rule 7 mandates font height thresholds. This necessitates camera calibration or reference-based scale inference5.
+Medium
+SOURCED-INTERPRETATION
+F-06
+Multi-Image Fusion
+N
+Cylindrical packages require multiple angles to capture all panels. The system must fuse state data across images.
+High
+ENGINEERING-INFERENCE
+NF-01
+Auditability & Traceability
+N
+Legal enforcement requires tracing a violation back to exact pixel coordinates on the image to justify a legal challan (citation).
+High
+ENGINEERING-INFERENCE
+NF-02
+Versioned Rule Architecture
+N
+Legal rules update frequently (e.g., the 2022 Unit Sale Price amendment)6. Hardcoding logic is highly brittle.
+High
+ENGINEERING-INFERENCE
+NF-03
+Multilingual Support
+N
+Indian packaging features English, Hindi, and regional scripts7, requiring robust multilingual NLP.
+Medium
+SOURCED-INTERPRETATION
+NF-04
+Low-Latency Offline Capability
+N
+Inspectors operate in warehouses with poor connectivity, making on-device or edge-capable inference highly desirable.
+Low
+HYPOTHESIS
+
+D. Legal / Regulatory Framework
+The compliance framework is rigidly anchored by the Legal Metrology Act, 2009, and the subsequent Legal Metrology (Packaged Commodities) Rules, 20118 [FACT]. These rules establish strict guidelines dictating the information that must be presented to consumers, the specific typography formatting, and the geometric placement of these declarations.
+A 'pre-packaged commodity' is defined as a commodity placed in a package of whatever nature, without the purchaser being present, such that the product has a pre-determined quantity9 [FACT]. The primary legislative vehicle is Rule 6, which outlines the mandatory declarations required on all standard packages. These include the full name and address of the manufacturer, packer, or importer; the country of origin for imported goods; the generic name of the commodity; the net quantity in standard units; the month and year of manufacture; the Maximum Retail Price (MRP) inclusive of all taxes; comprehensive consumer care details; and, crucially following recent amendments, the unit sale price9 [FACT].
+Rule 7 governs the Principal Display Panel (PDP), mandating that all essential information must appear grouped on this panel to ensure consumer visibility11. The PDP area is mathematically defined based on the shape of the packaging—for instance, 40% of the surface area for cylindrical packages12 [FACT]. Further complexity is introduced by Tables I and II associated with Rule 7, which specify the absolute minimum height in millimeters for numerals and letters, scaled directly to either the net quantity or the PDP area5. Finally, Rule 26 provides critical exemptions, specifically noting that packages containing 10 grams or 10 milliliters or less are exempt from several labeling mandates15 [FACT]. The strict adherence to standard units is also heavily monitored; utilizing non-standard abbreviations such as "gms" instead of "g", or "ltrs" instead of "L", constitutes a direct technical violation18 [SOURCED-INTERPRETATION].
+E. Rule / Amendment Timeline
+The system must account for temporal changes in legislation, as compliance is evaluated based on the rules active at the time of manufacturing. A version-aware rule engine is a strict dependency [ENGINEERING-INFERENCE].
+
+Date
+Instrument
+What Changed
+Affected Declaration
+Changes Logic?
+Report Versioning?
+2011
+LMPC Rules, 2011
+Baseline legal framework establishment8.
+All Declarations
+Yes
+Yes
+2015
+Amendment Rules 2015
+Adjustments to Rule 12 regarding placement20.
+Label placement
+Yes
+Yes
+Nov 2021
+Amendment Rules 2021
+Various declaration formatting updates21.
+MRP, Quantity
+Yes
+Yes
+Mar 2022
+Amendment Rules 2022
+Mandated Unit Sale Price, rounded to two decimals6.
+Unit Sale Price
+Yes
+Yes
+2023
+Amendment Rules 2023
+Refinements to pack sizes and exemption boundaries24.
+Exemptions (Rule 26)
+Yes
+Yes
+
+F. Compliance Requirement Database
+Every extracted check translates to a discrete evaluation node in the validation rule engine. The architecture must map spatial text extraction to these exact rules.
+
+Rule
+Declaration
+Mandatory?
+Required Content
+Validation Complexity
+Automatable?
+R6(1)(a)
+Manufacturer/Packer
+Yes
+Full corporate name and registered address
+Low (NER / Regex)
+Yes
+R6(1)(aa)
+Country of Origin
+Conditional
+Name of country (only required if imported)
+Low (Dictionary match)
+Yes
+R6(1)(b)
+Generic Name
+Yes
+Standardized product identification string
+Medium (Semantic matching)
+Yes
+R6(1)(c)
+Net Quantity
+Yes
+Standard SI units, rejecting "gms/ltrs"18
+Low (Regex/Unit validation)
+Yes
+R6(1)(d)
+Month/Year of Mfg
+Yes
+Strict Month and Year format10
+Low (Date parser)
+Yes
+R6(1)(e)
+MRP
+Yes
+Exact string: "MRP Rs... Inclusive of all taxes"
+Medium (String matching)
+Yes
+R6(1)(f)
+Consumer Care
+Yes
+Contact phone, email, and postal address
+Low (Regex classification)
+Yes
+R6(11)
+Unit Sale Price
+Yes (post-2022)
+Price computed per standard unit6
+High (Mathematical validation)
+Yes
+R7(1)
+PDP Area
+Yes
+Grouped placement within defined spatial ratio
+Very High (3D logic from 2D)
+No (Needs HITL)
+R7(2)
+Font Height
+Yes
+Minimum mm height per Table I/II5
+Very High (Scale inference)
+No (Needs HITL)
+R26
+10g/10ml Exemption
+Conditional
+Logic gate to bypass specific rules16
+Low (Boolean logic gate)
+Yes
+
+G. Literature Survey (Overview)
+The challenge of automating compliance for visually rich documents (VRDs) and complex product packaging relies on the convergence of Scene Text Recognition, Object Detection, and Key Information Extraction (KIE). Historically, engineering pipelines utilized a highly sequential approach: image binarization followed by OCR, culminating in Regular Expressions to find dates and numbers. While deterministic, this approach catastrophically fails on crumpled packaging, variable lighting, and arbitrary label designs common in Indian FMCG sectors [FACT].
+Recent literature highlights a decisive shift toward multimodal document understanding. Transformer-based architectures, notably the LayoutLM family, natively encode textual, spatial (bounding box coordinates), and visual (image patch) features to understand the semantic structure of a document27 [SOURCED-INTERPRETATION]. Concurrently, large vision-language models (VLMs) such as Qwen2-VL and Florence-2 have demonstrated robust zero-shot capabilities, extracting structured JSON schemas directly from complex visual scenes without an explicit OCR intermediate step28 [FACT].
+H. OCR Technology Survey
+OCR serves as the foundational data ingestion layer for any deterministic compliance architecture. Packaging OCR is notoriously difficult due to glossy specular reflections, curved surfaces (cylinders, flexible pouches), and extreme typographical variations.
+
+OCR Engine
+Architecture / Type
+Published Benchmark (Noisy Scanned)
+Suitability for Packaging
+Licensing
+PaddleOCR
+Deep Learning (DBNet + CRNN)
+91.5%30
+Excellent. High resilience to curved text (88.7% accuracy)31.
+Apache 2.0
+EasyOCR
+Deep Learning (CRAFT + CRNN)
+84.3%31
+Good. Intermediate error rates, struggles with extreme curves32.
+Apache 2.0
+TrOCR
+Transformer-based
+87.2%31
+Fair. Computationally heavy for edge deployment; better suited for handwriting.
+MIT
+Tesseract
+LSTM-based (legacy)
+Consistently lowest
+Poor on noisy/curved scenes; highly dependent on manual preprocessing.
+Apache 2.0
+MMOCR
+OpenMMLab Toolkit
+N/A (Toolkit)33
+High flexibility but requires intensive custom training pipelines.
+Apache 2.0
+
+Based on the evidence, PaddleOCR consistently outperforms alternatives in both overall accuracy on noisy scanned documents (91.5%) and curved text recognition (88.7%), making it the most viable candidate for the text-detection baseline [ENGINEERING-INFERENCE]30.
+To maximize OCR yield, raw images must undergo sophisticated preprocessing. Adaptive thresholding is required to establish contrast against complex graphic backgrounds, alongside algorithmic deskewing. However, specular highlights (glare) on plastic packaging frequently obliterate localized text data. Purely algorithmic glare reduction is largely ineffective without multi-view fusion, meaning the system must request the user to physically alter the camera angle [HYPOTHESIS].
+I. Computer Vision Survey
+While OCR transcribes the text, discrete Computer Vision object detection is necessary to localize macro-structural elements like the Principal Display Panel, barcode regions, and nutrition tables before transcription occurs.
+
+Model / Technique
+Architecture
+Target Metric (mAP@50)
+Suitability / Note
+YOLOv8 / YOLOv11
+CNN-based Real-Time
+~50% (on dense SKU)
+The industry standard for real-time bounding box detection, scaling efficiently.
+RT-DETR
+Real-Time Transformer
+93.6% (on targeted datasets)
+Surpasses YOLOv8 in accuracy-speed tradeoffs35. Avoids NMS logic.
+pyzbar / ZXing
+Algorithmic Barcode
+N/A (Rule-based)
+Standard for flat barcodes, but struggles heavily with curved cylindrical packages37.
+Dynamsoft (Commercial)
+Proprietary
+~100% on retail tests
+Outperforms open-source on curved cases38, but carries licensing costs.
+
+Literature indicates RT-DETR achieves superior precision, hitting 53.1% AP at 108 FPS on an Nvidia T4 GPU36 [FACT]. Its transformer-based architecture is exceptionally capable of identifying specific layout regions (e.g., distinguishing the front panel from a side panel) [ENGINEERING-INFERENCE]. For barcode detection, open-source libraries like ZXing struggle with the curvature of small items; the recommended architecture involves an RT-DETR detector trained to crop distorted barcodes and unwarp them before passing them to pyzbar [RECOMMENDATION].
+J. Document/Layout Understanding Survey
+Once bounding boxes and text strings are isolated, the system must infer semantic relationships, such as linking the isolated string "Rs." to the integer "150.00" to construct the MRP entity.
+
+Model
+Modality
+Benchmark (FUNSD F1)
+Benchmark (SROIE F1)
+Architectural Tradeoff
+LayoutLMv3
+Text + BBox + Image
+92.15%27
+98.52%27
+State-of-the-Art for Key Information Extraction (KIE)27. Requires an upstream OCR engine to function.
+Donut
+Image  Text (OCR-Free)
+~60-70% (relative)
+N/A
+Acts as a black box; prone to hallucination and token-dropping on dense packaging41.
+Pix2Struct
+Image  Text (OCR-Free)
+Outperforms Donut
+N/A
+Computationally heavy, still suffers from a lack of strict spatial traceability41.
+
+LayoutLMv3 requires a multi-stage pipeline (Image  OCR  LayoutLMv3), increasing overall system latency but offering deterministic traceability where bounding boxes directly map to output text [ENGINEERING-INFERENCE]. Conversely, OCR-free models like Donut operate as black boxes, making legal traceability nearly impossible [FACT]. Therefore, a pipeline maintaining discrete OCR bounding boxes is strictly superior for government compliance auditing [RECOMMENDATION].
+K. NLP / Information Extraction Survey
+Post-OCR, extracting structured entities involves resolving raw, often erroneous text into clean JSON schema objects.
+
+Extraction Approach
+Description
+Efficacy for LMPC
+Tradeoffs
+Rule-based (Regex/FSM)
+Hardcoded pattern matching for strings.
+Low. Too brittle for OCR errors.
+Fast, but fails on cases like "Rs. l50" where '1' becomes 'l'.
+NLP (NER)
+Traditional Named Entity Recognition.
+Medium. Requires large fine-tuning datasets.
+Lacks context for complex multi-line addresses.
+LLM (Structured Output)
+Utilizing LLMs to output constrained JSON.
+High. Can infer semantic meaning despite OCR noise.
+Latency overhead; requires schema enforcement libraries to prevent malformed outputs43.
+
+Modern pipelines utilize libraries like Instructor and Outlines to enforce strict JSON schema decoding at the LLM token generation level43 [FACT]. The Outlines framework builds a finite-state machine from a Pydantic schema, guaranteeing that the LLM output mathematically conforms to the requested schema46. Contextual LLM correction offers robust error healing—for instance, an LLM infers that the OCR output 50O g must be an integer and a standard unit, safely correcting it to 500 g. However, silent auto-correction poses a legal risk. The system must output a confidence score, and corrections of critical fields like MRP or Expiry Dates must trigger a mandatory NEEDS REVIEW flag to prevent unauthorized data manipulation [RECOMMENDATION].
+L. Multimodal AI Survey
+Recent Vision-Language Models (VLMs) present an alternative, theoretically bypassing traditional OCR and Layout models by directly answering Visual Question Answering (VQA) prompts over the image (e.g., "Extract the MRP and Net Quantity as JSON").
+
+Multimodal Model
+Capabilities
+Benchmark Evidence
+Hallucination Risk / Fit
+Qwen2-VL
+Document QA, OCR structured extraction.
+Qwen2-VL-7B+OCR achieves 69.8% on OmniDocBench28.
+Medium. Excellent layout understanding, but can generate visually plausible but incorrect text.
+Florence-2
+Vision foundation model, dense region captioning.
+Runs locally on 8GB VRAM29.
+High for exact text extraction; better suited for macro object detection and layout parsing.
+
+While VLMs represent the state of the art in semantic comprehension, their generative nature means they occasionally hallucinate text. In a strict legal compliance system, a false positive (flagging a violation that does not exist) or a false negative (missing an omitted declaration) carries severe regulatory penalties. Therefore, VLM outputs must never be utilized as the sole determinant for a PASS/FAIL legal status without deterministic spatial evidence grounding the VLM's answer to a cropped bounding box verified by a deterministic OCR engine [ENGINEERING-INFERENCE].
+M. Rule Engine Survey
+The intricate logic validating the extracted JSON payload against the temporal LMPC rules must be abstracted into a formal rules engine. Hardcoding logic such as if (mrp == null) deeply into the application backend fails both the testability and versioning constraints required by continuous legislative amendments [FACT].
+DECISION GATE M-1: Rule Engine Selection
+DECISION: Select the core execution environment for LMPC compliance logic.
+ROUTES:
+A) Drools (Java JVM engine, highly expressive but heavy memory footprint)49.
+B) Zen Engine / GoRules (Rust-based, cross-platform, highly performant)51.
+C) JSON-Logic (Lightweight JS/Python logic parser).
+EVIDENCE: Zen Engine provides native Python and Node bindings with bare-metal Rust execution speeds52. Public execution benchmarks demonstrate Zen Engine drastically outperforms JVM engines like Drools in stateless microservices53. JSON-Logic lacks the robust decision-table architecture required to map complex overlapping LMPC exemptions (e.g., Rule 26 overlaps).
+TRADEOFF MATRIX:
+Route
+Performance
+Memory Footprint
+Decision Table Support
+Integration with ML Python Stack
+Drools
+High
+Very Heavy
+Excellent
+Poor (Requires separate JVM)
+Zen Engine
+Highest
+Very Light
+Excellent
+Excellent (Native Bindings)
+JSON-Logic
+Medium
+Light
+Poor
+Excellent
+
+RECOMMENDATION: Route B (Zen Engine / GoRules).
+REASON: It provides the essential decision-table architecture for LMPC rules while matching the Python-centric ML backend infrastructure, completely eliminating inter-process serialization latency.
+CONDITIONS THAT WOULD CHANGE THIS: If government integration explicitly mandates JVM-enterprise architecture standards that prohibit Rust binaries.
+N. Readability / Font / Placement Research
+The central technical limitation of the SIH26034 mandate revolves around Rule 7 and Tables I and II, which dictate that the physical height of numerals in the net quantity declaration must meet absolute millimeter thresholds based on the package size5 [FACT].
+The critical engineering question is whether legal font-size compliance can be reliably established from an arbitrary photograph. The conclusion is strictly no. Monocular vision systems, such as standard smartphone cameras, capture light in a pixel matrix, possessing no absolute scale. Without active depth sensing hardware (like Time-of-Flight or LiDAR sensors) or a known physical reference object in the frame, calculating a pixel-to-millimeter ratio is mathematically unsolvable due to unknown perspective projection and focal distance variables [FACT]3.
+Methods such as attempting to infer the dimensions of the package using a product database fail if the product is a new variant or a counterfeit. Consequently, true physical measurement via image processing must be classified as an UNRESOLVED constraint. For the SIH MVP, the system must utilize an AR-assisted UI to enforce a physical reference object protocol (e.g., placing an ID card next to the label), or alternatively, explicitly flag font-size compliance as "Requires Human Verification" [RECOMMENDATION].
+O. Product Classification Research
+LMPC compliance rules vary significantly by product category. Determining the broad product class is the mandatory first step in routing extracted data to the correct rule set. Research into existing taxonomies highlights datasets like SKU-110K, which provides 11,743 densely packed retail shelf images suitable for localization training55, and the RPC (Retail Product Checkout) dataset, which contributes 83,739 standardized images across 200 distinct SKUs57 [FACT].
+The recommended approach utilizes a hierarchical classification model fine-tuned on RPC and localized Indian grocery datasets59 to classify the commodity type. This classification subsequently queries a metadata database to retrieve specific LMPC exception rules applicable exclusively to that category [ENGINEERING-INFERENCE].
+P. Multilingual Research
+The real-world packaging landscape in India is defined by deep linguistic diversity, frequently employing bilingual (English and Hindi), code-switched, or transliterated typography. The Bharat Scene Text Dataset (BSTD) serves as the primary benchmark, highlighting the severe complexities of Indic script OCR in the wild across 6,582 scene images7 [FACT]. Standard models trained exclusively on Latin characters predictably fail to extract generic names or manufacturer addresses printed in regional languages.
+PaddleOCR provides robust support for multilingual models, including Devanagari script, which is critical for parsing commodities distributed outside urban centers34. However, robust multi-script Named Entity Recognition (NER) represents a significant research burden. For the SIH prototype scope, the pipeline should explicitly target English and Hindi to guarantee stability, explicitly marking regional scripts as a target for Future Work [RECOMMENDATION].
+Q. Dataset Survey
+Training and evaluating the pipeline requires accessing diverse visual data.
+
+Dataset
+Domain
+Images
+Relevance
+Availability
+SKU-110K
+Dense Retail Shelves
+11,743
+High (Macro Object Detection)55
+Public / Open
+RPC Dataset
+Retail Product Checkout
+83,739
+High (Classification & BBox)57
+Public / Open
+BSTD
+Indian Scene Text
+6,582
+High (Multilingual OCR Benchmark)7
+Public / Research
+Indian Retail
+Indian FMCG specific
+300-1000
+Medium (Context and visual diversity)59
+Kaggle / Roboflow
+FUNSD
+Form Understanding
+199
+Low (Too clean, dissimilar to complex packaging)
+Public
+SROIE
+Scanned Receipts
+1,000
+Medium (KIE benchmarking reference)
+Public
+
+R. Dataset Gap Analysis
+While raw image datasets of retail shelves and general scene text exist, there is a total absence of a specialized LMPC Compliance Annotated Dataset [FACT]. There are no available public datasets mapping images of Indian packaging explicitly to their Legal Metrology rule violations.
+To build an effective evaluation pipeline, the engineering team must construct a bespoke validation dataset comprising approximately 500 to 1,000 images of Indian FMCG products. The required annotation specification must strictly include: Image_ID, Spatial_Bounding_Boxes, OCR_Transcriptions, Key_Value_Semantic_Pairs, and explicit LMPC_Violation_Flags mapped directly to the Rule 6 and Rule 7 clauses [ENGINEERING-INFERENCE].
+S. Synthetic Data Research
+To rapidly bridge the dataset gap during the pre-engineering phase, synthetic data generation provides a highly viable avenue for training the layout and OCR extraction models. Digital packaging label templates can be procedurally generated and populated with randomized data (fictional addresses, randomized MRPs, and varying dates). These labels can be rendered onto 3D primitives (cylinders, boxes) using Python rendering APIs, subsequently applying environmental augmentations such as blur, low-light, and specular glare.
+However, synthetic data cannot reliably model the physical degradation of real-world labels—such as tears, smudges, fading, or genuine compliance edge-cases like an updated MRP sticker placed directly over the original printed label. Therefore, while synthetic data suffices for bootstrapping model weights, real-world image testing remains mandatory for the final performance evaluation [HYPOTHESIS].
+T. Competitor / Existing-System Survey
+The current operational standard for supply chain compliance relies almost exclusively on manual QA auditors referencing physical checklists.
+Competitor / System Type
+Capabilities / Focus
+Target Customer
+Relevance to SIH26034
+Gap Addressed
+Industrial Machine Vision (Cognex/Keyence)
+High-speed assembly line inspection.
+Manufacturing plants.
+Low. Fixed hardware; unable to parse complex legal text semantics.
+SIH requires a hardware-agnostic, mobile software solution.
+Cloud Document AI (AWS Textract / Google Cloud)
+General key-value extraction from flat documents.
+Enterprise digitization.
+Medium. High accuracy, but lacks native integration with Indian legislative rule engines.
+SIH requires deep integration with specific LMPC temporal rules.
+Custom QA Software
+Digital checklist applications.
+Retail / Supply Chain.
+Low. Still requires human manual data entry.
+SIH automates the discovery phase prior to human review.
+
+The specific gap SIH26034 addresses is the need for a specialized, rule-aware, mobile-accessible pipeline tuned exclusively to the temporal and dimensional idiosyncrasies of the Indian Legal Metrology framework [ENGINEERING-INFERENCE].
+U. Prior-Art / Patent Survey
+
+Prior Art Focus
+Core Technique
+Relevance
+Overlap
+Font Size Estimation
+Camera calibration and known distance-from-focus algorithms to establish scale3.
+High
+Confirms the mathematical impossibility of absolute scaling without reference metrics.
+Barcode Localization
+Finding specific geometric locator patterns (Finder Patterns in QR, Start/Stop chars in 1D)64.
+Medium
+Provides a standardized approach useful for bootstrapping image orientation.
+
+(Note: This scan is strictly technical to inform engineering feasibility. No legal opinions on patent infringement are provided.)
+V. Open-Source Survey
+
+Component
+Repository/Project
+License
+Architecture
+Suitability
+OCR Engine
+PaddleOCR
+Apache 2.0
+DBNet + CRNN
+High. Established SOTA for noisy scene text30.
+Object Detection
+YOLOv8 / RT-DETR
+AGPL-3.0 / Apache
+CNN / Transformer
+High. RT-DETR excels in pure accuracy35.
+Rule Engine
+Zen Engine
+MIT
+Rust Core
+High. Exceptionally performant; cross-platform51.
+Structured Output
+Outlines
+Apache 2.0
+FSM over LLMs
+High. Forces LLMs to output valid JSON schemas44.
+
+W. Architecture Alternatives
+The overarching system must reliably map raw image pixels to a definitive PASS/FAIL/REVIEW legal compliance state.
+Architecture Route
+Components
+Data Flow
+Tradeoffs
+A: Sequential Pipeline
+Image  Preprocessing  RT-DETR  PaddleOCR  LayoutLMv3  Zen Engine
+Highly linear, deterministic tracing.
+Complex to orchestrate; high latency due to multiple models.
+B: Pure Multimodal
+Image  Qwen2-VL  JSON Output  Zen Engine
+Single-pass VQA extraction.
+Simple architecture, but prone to dangerous un-auditable hallucinations.
+C: Hybrid Verification
+Image  Qwen2-VL (Extraction) AND PaddleOCR (Verification)  Discrepancy Check  Zen Engine
+Dual-pass verification.
+Highly robust and auditable, but computationally expensive, precluding edge execution.
+
+Architecture A is deterministic but complex. Architecture B fails the strict auditability requirements of legal enforcement due to hallucination risks. Architecture C provides the necessary cross-verification required for legal systems but demands cloud-scale GPU infrastructure [ENGINEERING-INFERENCE].
+X. Technology Alternatives (Decision Gates)
+DECISION GATE X-1: Text Extraction Paradigm
+DECISION: Selection of the primary method for extracting key-value pairs from raw packaging imagery.
+ROUTES:
+A) Pure OCR + Regex matching.
+B) OCR + LayoutLMv3 semantic parsing.
+C) Pure VLM (Qwen2-VL) zero-shot extraction.
+D) Hybrid OCR + Small LLM utilizing constrained generation (Outlines).
+EVIDENCE: Regex is excessively brittle when confronting varied typography. LayoutLMv3 requires extensive fine-tuning data on Indian packaging, which currently does not exist. Qwen2-VL is powerful but hallucinates text not present in the image47. A hybrid approach (OCR + LLM) utilizing Instructor/Outlines to force schema compliance leverages the spatial determinism of PaddleOCR while utilizing the semantic flexibility of small LLMs (e.g., Llama-3-8B) to clean the text45.
+TRADEOFF MATRIX:
+Route
+Latency
+Implementation Cost
+Accuracy
+Traceability / Auditability
+OCR + Regex
+Low
+Low
+Low
+High
+Pure VLM
+Medium
+High
+High
+Low (Black box)
+Hybrid (OCR + LLM)
+Medium
+Medium
+High
+High (BBox grounding)
+
+RECOMMENDATION: Route D (Hybrid OCR + LLM with strict Schema Enforcement).
+REASON: This architecture seamlessly balances the semantic understanding required to parse inconsistently formatted dates and addresses with the rigid traceability provided by OCR bounding boxes, which is mandatory for legal compliance.
+CONDITIONS THAT WOULD CHANGE THIS: If latency tests indicate that the combined OCR and LLM inference exceeds 5 seconds per scan on the target server infrastructure, the system must fallback to Route B (LayoutLMv3).
+Y. Build-vs-Buy Analysis
+
+Component
+Decision
+Justification
+OCR Engine
+Adapt Open Source
+PaddleOCR provides robust, production-ready pre-trained weights; training an OCR engine from scratch is an unnecessary expenditure34.
+Rule Engine
+Adapt Open Source
+Zen Engine is MIT-licensed and fits the high-throughput, decision-table requirements perfectly51.
+LLM / NLP
+Buy API / Host OS
+For the SIH Prototype timeline, utilizing a cloud API (Groq/OpenAI) with the Instructor library provides the fastest iteration. For production, host a localized model (Llama-3) using vLLM to maintain data privacy.
+Compliance Logic
+Build
+The translation of the complex LMPC Rules (2011–2023) into JDM/JSON decision logic constitutes the core intellectual property and value proposition of this specific system.
+
+Z. Human-in-the-Loop (HITL) Design
+Complete automation of legal compliance enforcement is legally fraught and practically impossible given current dimensional sensing limits. The system must be explicitly designed as an assistive analytical tool for the metrology inspector.
+Decision States Machine:
+PASS: All rules validated with high confidence thresholds; no anomalies detected.
+FAIL: Deterministic violation detected (e.g., MRP string is definitively missing, or Expiry Date is in the past).
+NEEDS REVIEW: OCR confidence is low, the LLM schema generator flagged a probable error, or spatial compliances (such as Rule 7 font sizes) require human verification.
+INSUFFICIENT EVIDENCE: The extraction pipeline indicates missing panels (e.g., the user only scanned the front of a box, but the manufacturer address rule necessitates scanning the back).
+The system integrates a multi-view fusion workflow via an active acquisition loop. If the state is INSUFFICIENT EVIDENCE, the UI actively prompts the user: "Manufacturer address not found. Please rotate the package and scan the back panel." The system then stitches the extracted JSON states across multiple temporal frames to evaluate compliance [RECOMMENDATION].
+AA. Explainability
+A completely opaque FAIL output is useless to a metrology inspector who must issue a legally binding challan (citation). System explainability must go beyond generic heatmaps.
+The traceability chain must explicitly link: Final Decision  Executed Rule Node  Extracted Key-Value Pair  Raw OCR Text String  Original Image Bounding Box.
+The UI compliance report must display the original image with an overlaid bounding box exactly highlighting where the offending text was detected, paired with a direct citation of the violated statute (e.g., "Violation of Rule 6(1)(e): MRP not found").
+AB. Security / Privacy
+While scanning public product labels does not inherently violate Personally Identifiable Information (PII) laws, the system may process proprietary supply-chain metadata or pre-release product designs during manufacturer self-audits.
+The production posture requires strict Role-Based Access Control (RBAC) to separate field inspectors from system administrators. All scans, algorithmic results, and manual overrides must be written to an immutable cryptographic audit log to prevent tampering. For the SIH prototype, basic JWT authentication and secure API endpoints are sufficient to demonstrate security awareness.
+AC. Legal and Technical Risks
+
+Risk Vector
+Type
+Description
+Mitigation Strategy
+False Positives
+Legal
+System incorrectly flags a compliant product as illegal, leading to unwarranted litigation.
+Strictly enforce the HITL workflow; use probabilistic thresholding to route edge cases to NEEDS REVIEW.
+Outdated Logic
+Legal
+The rule engine misses a recent legislative update (e.g., 2022 Unit Sale Price67).
+Mandate versioned rulesets tied to the product's manufacturing date.
+Model Hallucination
+Technical
+LLMs attempting to fix OCR errors invent data (e.g., hallucinating an MRP that isn't present).
+Utilize strict constraint decoding (Outlines); return the raw OCR string alongside the normalized entity for verification.
+
+AD. Failure-Mode Analysis
+Failure Mode
+Detection Method
+Mitigation Strategy
+Automatable?
+Human Review?
+Glossy Reflection / Glare
+Low contrast in image histogram; sudden OCR confidence drop.
+UI active prompt: "Reposition camera to reduce glare."
+Yes
+No
+Crumpled Packaging
+Warped text detection; highly non-linear bounding boxes.
+Apply Thin-Plate Spline (TPS) transformation in CV preprocessing.
+Yes
+If severe
+Missing Side
+Required fields remain missing from the JSON payload post-scan.
+State machine explicitly requests additional scan angles.
+Yes
+No
+Tiny Fonts
+Bounding box height falls below the minimum pixel threshold.
+Trigger super-resolution preprocessing; prompt for macro shot.
+Yes
+Yes
+Altered Labels (Stickers)
+Image segmentation detects overlay contours or differing noise profiles.
+Flag as potential tampering; require visual audit by inspector.
+No
+Yes
+
+AE. Benchmarking Framework
+To objectively evaluate the algorithmic performance of the system, metrics must be tracked across the discrete subsystems:
+OCR Subsystem: Character Error Rate (CER) and Word Error Rate (WER). The baseline target is a CER < 5% on clear packaging.
+Detection Subsystem: Mean Average Precision (mAP@50). The target is > 90% for detecting the Principal Display Panel region.
+Extraction Subsystem: Entity-level F1 Score. The target is > 95% for high-priority numeric fields like MRP and Dates.
+End-to-End System: Exact Match Ratio for the final compliance state (PASS/FAIL). The target operational profile is an > 85% automation rate, with the remaining 15% routed to NEEDS REVIEW. The false-positive rate for violations must be strictly constrained to < 1%.
+AF. Experiment Plan
+Experiment Name
+Hypothesis
+Procedure
+Target Metric
+Decision Criterion
+E1: OCR vs. Multimodal Zero-Shot
+Qwen2-VL can extract the 8 mandatory Rule 6 declarations with higher F1 precision than a PaddleOCR + Instructor pipeline due to native spatial reasoning.
+Run 200 annotated Indian grocery images through both pipelines. Evaluate output JSONs against ground truth.
+F1 Score / Hallucination Rate
+If Qwen2-VL exhibits > 2% hallucination rate, it is disqualified for production use despite higher F1, due to unacceptable legal risk.
+E2: Physical Font Size Estimation
+Utilizing a standardized reference object (e.g., an ID card) allows the CV pipeline to calculate absolute millimeter font height with < 10% error margin.
+Photograph 50 packages with a reference card. Apply perspective transform; calculate mm/pixel ratio. Compare against caliper measurements.
+Measurement Error %
+If error exceeds 10%, fully automate font size checks out of the MVP scope and default to manual entry.
+
+AG. Decision Matrices (Consolidated)
+Extraction Architecture: A Hybrid OCR + LLM pipeline with Schema Enforcement (Outlines) was chosen over pure Vision-Language Models due to strict determinism and auditability requirements.
+OCR Engine: PaddleOCR was chosen over Tesseract due to published benchmark superiority in handling noisy, curved scene text typical of product packaging31.
+Rule Engine: Zen Engine was chosen over Drools due to its Rust-based performance envelope and seamless native integration with Python ML microservices51.
+Deployment Target (Prototype): Cloud API inference is recommended for the hackathon phase. While on-device edge execution is the ultimate production goal for field inspectors, packaging heavy ML models into constrained edge devices exceeds the time and scope constraints of the SIH prototyping phase.
+AH. Recommended MVP
+The Minimum Viable Product (MVP) designed for the SIH 2026 evaluation must ruthlessly focus on proving the core end-to-end pipeline, deliberately deferring extreme edge cases.
+Feature
+PS-Required?
+Classification
+Difficulty
+Value
+Mobile Web Capture UI
+Yes
+MVP
+Low
+High
+Pipeline: PaddleOCR  Llama-3  Zen Engine
+Yes
+MVP
+High
+Very High
+Rule 6 Base Declarations (MRP, Qty, Date, Name)
+Yes
+MVP
+Medium
+Very High
+PDF Compliance Report Generation
+Yes
+MVP
+Low
+High
+Rule 7 Font Size Measurement (Automated)
+No
+Future
+Very High
+Medium
+Counterfeit Detection
+No
+Future
+Very High
+Low
+
+AI. Recommended Production Architecture
+For a scaled, nationwide government deployment post-SIH:
+The infrastructure must utilize a Kubernetes cluster hosted on an Indian data center (MeitY empaneled) to guarantee data sovereignty. The service architecture relies on specialized microservices: an Ingestion Service handling image uploads; an AI Inference Fleet comprising GPU nodes running TensorRT-optimized PaddleOCR and RT-DETR models; a Rules Service utilizing a high-throughput Zen Engine cluster to evaluate JSON payloads; and an Audit Service writing state to a PostgreSQL database with immutable image evidence stored in an S3-compatible object store. Finally, edge capabilities should be introduced via a distilled mobile app utilizing ONNX-runtime detection models to provide instant heuristic feedback (e.g., detecting glare) before transmitting heavy image payloads to the cloud.
+AJ. Engineering Backlog
+Task ID
+Domain
+Description
+Reason / Dependency
+Priority
+Est. Difficulty
+T-101
+Data
+Scrape and compile 1,000 images of Indian retail packaging.
+Required for pipeline fine-tuning.
+High
+Low
+T-102
+Data
+Annotate bounding boxes for PDP and mandatory declarations.
+Dep: T-101. Generates ground truth.
+High
+Medium
+T-201
+AI-CV
+Implement PaddleOCR inference script with perspective-correction.
+Core extraction capability.
+High
+Medium
+T-202
+NLP
+Define Pydantic schemas for the 8 mandatory Rule 6 fields.
+Enforces data structure for LLM.
+High
+Low
+T-203
+NLP
+Integrate Instructor / Outlines to format OCR text into schema.
+Dep: T-201, T-202.
+High
+High
+T-301
+Compliance
+Translate LMPC Rule 6 into Zen Engine JDM decision tables.
+Encodes the legal logic.
+High
+Medium
+T-302
+Backend
+Implement INSUFFICIENT EVIDENCE state machine for multi-image logic.
+Handles missing panels.
+Medium
+High
+
+AK. Testing Strategy
+Standard unit testing paradigms are insufficient for probabilistic AI pipelines. The testing strategy mandates a multi-tiered approach:
+Rule Unit Tests: Deterministic testing of the Zen Engine decision tables isolating the AI variance.
+Case 1: Extracted JSON { "net_quantity": "500", "unit": "g" }  Expect PASS.
+Case 2: Extracted JSON { "net_quantity": "500", "unit": "gms" }  Expect FAIL (Rule violation: non-standard unit)18.
+Pipeline Integration Tests: Passing a known gold-standard image through the OCR  Extraction  Rules pipeline to ensure end-to-end data coherence.
+Regression Testing: When legislative rules update (e.g., an amendment altering Unit Sale Price rounding), historical test cases must be re-run against the newly versioned rule set to guarantee backward compatibility for auditing historical inspections.
+AL. SIH Demo Strategy
+The hackathon demonstration must conclusively prove functional reality, heavily penalizing precomputed or mocked scripts.
+The presentation flow should invite judges to provide a packaged commodity (e.g., a standard water bottle or biscuit pack). The team captures the image live, utilizing the UI to visually expose the intermediate computational steps: rendering the PaddleOCR bounding boxes directly over the image, displaying the parsed intermediate JSON output, and illustrating the Zen Engine decision tree execution path. Finally, the team introduces a modified package (e.g., where the MRP is deliberately obscured) to demonstrate the system successfully identifying a Rule 6 violation in real-time and generating the accurate legal citation. A documented offline fallback plan—maintaining a local server with pre-loaded videos and a network-independent LLM (via Ollama)—must be prepared in case of venue network degradation.
+AM. Open Questions / Unresolved Issues
+
+Unknown
+Why it matters
+How to resolve
+Priority
+Absolute Physical Measurement
+Rule 7 font-size compliance is legally mandated5, but geometrically impossible to compute from single 2D images without depth data.
+Experiment with ARKit/ARCore depth APIs on mobile client devices, or rigidly enforce a physical reference object protocol.
+High
+Extreme Deformation Processing
+Crumpled flexible packaging (e.g., potato chip bags) severely distorts spatial relationships and degrades OCR accuracy.
+Research and benchmark Thin-Plate Spline (TPS) Spatial Transformer Networks as an automated pre-processing step.
+Medium
+Multilingual NER Context
+Extracting manufacturer entities in heavily code-switched Hindi-English text limits system applicability in rural and regional sectors61.
+Fine-tune extraction models on the Bharat Scene Text Dataset (BSTD) and evaluate performance degradation.
+Medium
+
+AN. Research Gaps
+The primary gap identified in current academic literature and available datasets is the complete absence of a unified framework connecting complex visual document understanding directly to structured, versioned legal syllogisms. While mature models exist to extract key-value pairs from standard receipts (SROIE) and administrative forms (FUNSD)70, evaluating dense extracted packaging data against a dynamic, evolving legal framework (such as the LMPC amendments introduced between 2011 and 2023) represents an entirely unexplored intersection of Regulatory Technology (RegTech) and Computer Vision. Bridging this gap through the rigorous integration of deterministic rule engines (Zen Engine) with probabilistic, multimodal extraction pipelines (OCR + LLM) constitutes the core engineering novelty and ultimate value proposition of the proposed solution.
+Works cited
+Smart India Hackathon 2026 — All 226 Problem Statements Master, https://www.blinknbuild.in/Assets/SIH_2026_All_226_Problem_Statements_Master_Catalogue.pdf
+NoBugNinja/Smart-India-Hackathon-SIH-2026-Problem-Statements, https://github.com/NoBugNinja/Smart-India-Hackathon-SIH-2026-Problem-Statements
+System and methods for creation and use of a mixed media, https://patents.google.com/patent/EP2482210A2/en
+(12) United States Patent (10) Patent No.: US 7.587,412 B2, https://patentimages.storage.googleapis.com/09/a2/33/6d784d4e1b9c03/US7587412.pdf
+Rule 6: Package Labeling Requirements | PDF | Litre | Volume - Scribd, https://www.scribd.com/document/811286930/Metrology-Rule-6-26-of-Packaged-Commodities-Rules-2011
+FAQs on Unit Sale Price under Legal Metrology for Packaged, https://www.legalmetrology.in/faqs-on-unit-sale-price-under-legal-metrology-for-packaged-commodity-rules-2022/
+Bhashini-IITJ/BharatSceneTextDataset: Large-Scale Scene Text, https://github.com/Bhashini-IITJ/BharatSceneTextDataset
+The Legal Metrology Act, 2009 - Department of Consumer Affairs, https://consumeraffairs.gov.in/pages/legal-metrology-act
+https://consumeraffairs.gov.in/pages/legal-metrology-overview
+LMPC Compliance in India: Rules & Requirements Guide - TaxGuru, https://taxguru.in/corporate-law/lmpc-compliance-india-rules-requirements-guide.html
+The Legal Metrology (Packaged Commodities) Rules, 2011, https://wbconsumers.gov.in/writereaddata/ACT%20&%20RULES/Act%20&%20Rules/9%20The%20Legal%20Metrology%20(Package%20Commodities)%20Rules,%202011.pdf
+Understanding Principal Display Panel (PDP) in Food and Legal, https://legalculinary.com/All_Insights/PDP
+the legal metrology (packaged - commodities) rules, 20111, https://thc.nic.in/Central%20Governmental%20Rules/Legal%20Metrology%20(Packaged%20Commodities)%20Rules,%202011.pdf
+Section 7 in The Legal Metrology (Packaged Commodities) Rules, https://indiankanoon.org/doc/151004919/
+Confusion around GST exemption on Non-branded food items, https://taxguru.in/goods-and-service-tax/confusion-gst-exemption-non-branded-food-items.html
+Extended Producer Responsibility in India: Notes for Investors, https://www.india-briefing.com/news/extended-producer-responsibility-in-india-notes-for-foreign-manufacturers-40094.html/
+Legal Metrology (Packaged Commodities) Rules, 2011 - LegitQuest, https://www.legitquest.com/act/legal-metrology-packaged-commodities-rules-2011/97B4
+Paper 11 | PDF | Value Added Tax - Scribd, https://www.scribd.com/document/353949254/Paper-11
+Leagal Metrology ( Packaged Commodity) Act, 2011 (Updated), https://taxguru.in/chartered-accountant/leagal-metrology-packaged-commodity-act-2011.html
+Legal Metrology (Packaged Commodities) (Amendment) Rules, 2015, https://taxguru.in/corporate-law/legal-metrology-packaged-commodities-amendment-rules-2015.html
+Legal Update on Legal Metrology (Packaged Commodities, https://www.gnslegal.in/legal-update-on-legal-metrology-packaged-commodities-amendment-rules-2021/
+Legal Metrology (Packaged Commodities) Amendment Rules, 2022, https://tarulegal.com/legal-metrology-packaged-commodities-amendment-rules-2022-to-come-into-force-on-october-01-2022/
+Legal Metrology (Packaged Commodities) Amendment Rules, 2022, https://www.teamleaseregtech.com/updates/article/16577/legal-metrology-packaged-commodities-amendment-rules-2022/
+Legal Metrology (Packaged Commodities) Amendment Rules, 2023, https://www.legitquest.com/act/legal-metrology-packaged-commodities-amendment-rules-2023/E049
+What Are Legal Metrology Rules for Packaged Commodities India, https://umspcs.in/blog/what-are-the-legal-metrology-rules-for-packaged-commodities-in-india/
+Ministry of Consumer Affairs Notifies the Legal Metrology (Packaged, https://www.saikrishnaassociates.com/ministry-of-consumer-affairs-notifies-the-legal-metrology-packaged-commodities-amendment-rules-2022/
+Information Extraction from Visually Rich Documents using LLM, https://arxiv.org/html/2505.13535v1
+OCRBench v2: An Improved Benchmark for Evaluating Large ... - NIPS, https://papers.nips.cc/paper_files/paper/2025/file/8c2e6bb15be1894b8fb4e0f9bcad1739-Paper-Datasets_and_Benchmarks_Track.pdf
+Run vision models locally: Florence-2 and Qwen-VL for image, https://botmonster.com/ai/run-vision-models-locally-florence-2-qwen-vl/
+Best Open Source OCR Tools 2026: Tesseract, EasyOCR, https://imagetotable.ai/blog/best-open-source-ocr-tools-2026
+PaddleOCR vs Tesseract vs EasyOCR: OCR Model Comparison, https://gigagpu.com/paddleocr-vs-tesseract-vs-easyocr/
+Evaluating OCR performance on food packaging labels in South Africa, https://arxiv.org/html/2510.03570v1
+OCR comparison: Tesseract vs EasyOCR vs PaddleOCR vs MMOCR, https://toon-beerten.medium.com/ocr-comparison-tesseract-versus-easyocr-vs-paddleocr-vs-mmocr-a362d9c79e66
+Technical Analysis of Modern Non-LLM OCR Engines | IntuitionLabs, https://intuitionlabs.ai/articles/non-llm-ocr-technologies
+A Comparative Benchmark of Real-Time Detectors for Canopy, https://pmc.ncbi.nlm.nih.gov/articles/PMC13417413/
+Top Object Detection Models for Your Projects in 2025 | DigitalOcean, https://www.digitalocean.com/community/tutorials/best-object-detection-models-guide
+Zxing : Unable to Scan Small UPC codes - Stack Overflow, https://stackoverflow.com/questions/8103279/zxing-unable-to-scan-small-upc-codes
+Real-World Barcodes ZXing and ZBar Missed — But Dynamsoft Got, https://www.dynamsoft.com/blog/insights/barcode-decoding-edge-cases-dynamsoft-vs-zxing-zbar/
+An Adaptive Method for Spiral Segmentation of Aztec Compact, https://computeroptics.ru/KO/PDF/KO49-6/490632.pdf
+(PDF) LayoutLMv3: Pre-training for Document AI with Unified Text, https://www.researchgate.net/publication/360030234_LayoutLMv3_Pre-training_for_Document_AI_with_Unified_Text_and_Image_Masking
+Document Information Extraction Using Pix2Struct - Analytics Vidhya, https://www.analyticsvidhya.com/blog/2023/04/document-information-extraction-using-pix2struct/
+Engineering Explained: LayoutLMv3 and the Future of Document AI, https://www.kungfu.ai/blog-post/engineering-explained-layoutlmv3-and-the-future-of-document-ai
+Instructor: The Most Popular Library for Simple Structured Outputs, https://www.buildfastwithai.com/blogs/instructor-the-most-popular-library-for-simple-structured-outputs
+Learning to Generate Structured Output with Schema Reinforcement, https://arxiv.org/html/2502.18878v1
+The guide to structured outputs and function calling with LLMs, https://agenta.ai/blog/the-guide-to-structured-outputs-and-function-calling-with-llms
+GitHub - guidance-ai/llguidance: Super-fast Structured Outputs, https://github.com/guidance-ai/llguidance
+OCRBench v2: An Improved Benchmark for Evaluating Large ... - arXiv, https://arxiv.org/html/2501.00321v2
+opendatalab/OmniDocBench - GitHub, https://github.com/opendatalab/OmniDocBench
+Drools rule engine, https://docs.drools.org/8.38.0.Final/drools-docs/docs-website/drools/rule-engine/index.html
+Higson Blog | Business Rules Engine Comparison: The Complete, https://www.higson.io/blog/business-rules-engine-comparison-the-complete-guide-to-brms-vendor-selection
+GitHub - gorules/zen: Open-source Business Rules Engine for your, https://github.com/gorules/zen
+Performance - GoRules Documentation, https://docs.gorules.io/developers/overview/performance
+GoRules Zen Engine: Cross-platform rules engine written in Rust, https://www.reddit.com/r/rust/comments/13ckgnq/gorules_zen_engine_crossplatform_rules_engine/
+GoRules vs Drools | Best Drools Alternative 2026, https://gorules.io/compare/gorules-vs-drools
+SKU-110K Detection Dataset - Ultralytics YOLO, https://docs.ultralytics.com/datasets/detect/sku-110k
+Voxel51/sku110k_test · Datasets at Hugging Face, https://huggingface.co/datasets/Voxel51/sku110k_test
+RPC: a large-scale and fine-grained retail product checkout dataset, https://www.researchgate.net/publication/362534938_RPC_a_large-scale_and_fine-grained_retail_product_checkout_dataset
+Smart retail SKUs checkout using improved residual network - PMC, https://pmc.ncbi.nlm.nih.gov/articles/PMC10728162/
+Indian Groceries Dataset - Kaggle, https://www.kaggle.com/datasets/antoreepjana/indian-groceries-dataset
+Indian Grocery Object Detection Computer Vision Dataset, https://universe.roboflow.com/agentsk47/indian-grocery-object-detection-mfsnx
+Bharat Scene Text: A Novel Comprehensive Dataset and ... - arXiv, https://arxiv.org/html/2511.23071v1
+Bharat Scene Text Dataset (BSTD) - Emergent Mind, https://www.emergentmind.com/topics/bharat-scene-text-dataset-bstd
+Indian Retail Product Categorization Dataset - Kaggle, https://www.kaggle.com/datasets/bytesets/indian-retail-product-categorization-dataset
+(PDF) Fast QR Code Detection in Arbitrarily Acquired Images, https://www.researchgate.net/publication/221337868_Fast_QR_Code_Detection_in_Arbitrarily_Acquired_Images
+RT-DETR Real-Time Detection Transformer - Ultralytics YOLO, https://docs.ultralytics.com/models/rtdetr
+Your LLM Can Return Perfect JSON and Still Be Wrong, https://towardsdatascience.com/your-llm-can-return-perfect-json-and-still-be-wrong/
+Legal Metrology (Packaged Commodities) Amendment Rules, 2022, https://www.legitquest.com/act/legal-metrology-packaged-commodities-amendment-rules-2022/B5DC
+(PDF) Comparative Analysis of Open-Source OCR Frameworks for, https://www.researchgate.net/publication/399040735_Comparative_Analysis_of_Open-Source_OCR_Frameworks_for_Receipt_Data_Extraction_and_Post-Processing
+Drools vs GoRules: 2026 Comparison for Engineering and Product, https://www.nected.ai/blog/drools-vs-gorules
+arXiv:2409.11887v1 [cs.CL] 18 Sep 2024 - OpenReview, https://openreview.net/attachment?id=HnxK04Tx6b&name=pdf
+Accelerating Document AI - Hugging Face, https://huggingface.co/blog/document-ai

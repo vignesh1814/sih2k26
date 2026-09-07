@@ -1,0 +1,277 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "LMPC Comprehensive Legal Ontology and Compliance Specification",
+    "version": "2026.1",
+    "governing_statutes": {
+        "parent_act": "Legal Metrology Act, 2009 (Act No. 1 of 2010)",
+        "rules": "Legal Metrology (Packaged Commodities) Rules, 2011",
+        "key_amendments": [
+            "G.S.R. 385(E) (2015)",
+            "G.S.R. 629(E) (2017)",
+            "G.S.R. 779(E) (2021)",
+            "G.S.R. 226(E) (2022)",
+            "G.S.R. 577(E) (2022)",
+            "G.S.R. 648(E) (2022)",
+            "G.S.R. 720(E) (2023)"
+        ]
+    },
+    "Rule_6_Mandatory_Declarations": {
+        "rule_6_1_a_manufacturer_packer": {
+            "name": "Manufacturer / Packer / Importer Details",
+            "mandatory": true,
+            "validation_type": "entity_recognition",
+            "required_fields": [
+                "entity_name",
+                "street_address",
+                "city_or_state",
+                "pin_code"
+            ],
+            "legal_citation": "Rule 6(1)(a)"
+        },
+        "rule_6_1_aa_country_of_origin": {
+            "name": "Country of Origin",
+            "mandatory": "conditional",
+            "condition": "is_imported == true",
+            "validation_type": "country_dictionary_lookup",
+            "legal_citation": "Rule 6(1)(aa)"
+        },
+        "rule_6_1_b_generic_name": {
+            "name": "Common or Generic Commodity Name",
+            "mandatory": true,
+            "validation_type": "semantic_match",
+            "prohibited": "brand_name_only",
+            "legal_citation": "Rule 6(1)(b)"
+        },
+        "rule_6_1_c_net_quantity": {
+            "name": "Net Quantity",
+            "mandatory": true,
+            "validation_type": "regex_and_unit_check",
+            "allowed_units": [
+                "g",
+                "kg",
+                "ml",
+                "mL",
+                "l",
+                "L",
+                "cm",
+                "m",
+                "mm",
+                "N",
+                "U"
+            ],
+            "forbidden_units": [
+                "gms",
+                "gms.",
+                "gm",
+                "gm.",
+                "kgs",
+                "kgs.",
+                "kilo",
+                "ltr",
+                "ltrs",
+                "ml."
+            ],
+            "legal_citation": "Rule 6(1)(c) & Rule 13"
+        },
+        "rule_6_1_d_mfg_date": {
+            "name": "Month and Year of Manufacture",
+            "mandatory": true,
+            "validation_type": "date_format_check",
+            "format": "MM/YYYY, Month YYYY, or DD/MM/YYYY",
+            "future_date_allowed": false,
+            "legal_citation": "Rule 6(1)(d)"
+        },
+        "rule_6_1_da_expiry_date": {
+            "name": "Best Before / Expiry Date",
+            "mandatory": "conditional",
+            "condition": "is_perishable == true",
+            "phrases": [
+                "Best before",
+                "Use by"
+            ],
+            "legal_citation": "Rule 6(1)(da)"
+        },
+        "rule_6_1_e_mrp": {
+            "name": "Maximum Retail Price",
+            "mandatory": true,
+            "validation_type": "price_currency_phrase",
+            "accepted_currency_symbols": [
+                "Rs.",
+                "Rs",
+                "INR",
+                "\u20b9"
+            ],
+            "mandatory_phrases": [
+                "inclusive of all taxes",
+                "incl. of all taxes",
+                "incl of all taxes"
+            ],
+            "dual_mrp_prohibited": true,
+            "legal_citation": "Rule 6(1)(e) & Rule 18(2)"
+        },
+        "rule_6_1_f_dimensions": {
+            "name": "Dimensions of Commodity",
+            "mandatory": "conditional",
+            "condition": "dimension_relevant == true",
+            "legal_citation": "Rule 6(1)(f)"
+        },
+        "rule_6_2_consumer_care": {
+            "name": "Consumer Complaint Contact Information",
+            "mandatory": true,
+            "validation_type": "contact_bundle",
+            "required_channels": {
+                "name_or_office": true,
+                "postal_address": true,
+                "telephone_number": true,
+                "email_address": true
+            },
+            "legal_citation": "Rule 6(2)"
+        },
+        "rule_6_11_unit_sale_price": {
+            "name": "Unit Sale Price (USP)",
+            "mandatory": "conditional",
+            "condition": "mfg_date >= '2022-10-01' and net_qty_not_single_standard_unit",
+            "rounding": "nearest_2_decimal_places",
+            "standard_denominators": {
+                "weight_under_1kg": "per g",
+                "weight_over_1kg": "per kg",
+                "volume_under_1L": "per ml",
+                "volume_over_1L": "per L",
+                "length_under_1m": "per cm",
+                "length_over_1m": "per m",
+                "by_count": "per N or per unit"
+            },
+            "formula": "mrp / net_quantity",
+            "legal_citation": "Rule 6(11)"
+        }
+    },
+    "Rule_7_Principal_Display_Panel_Geometry": {
+        "excluded_surfaces": [
+            "top",
+            "bottom",
+            "can_flanges",
+            "bottle_neck",
+            "bottle_shoulder"
+        ],
+        "area_formulas": {
+            "rectangular": "height * width",
+            "cylindrical": "0.40 * height * circumference",
+            "irregular_other": "0.40 * total_surface_area"
+        },
+        "table_I_minimum_font_height_mm": [
+            {
+                "max_pdp_area_cm2": 50,
+                "min_height_normal_mm": 1.0,
+                "min_height_molded_mm": 2.0
+            },
+            {
+                "max_pdp_area_cm2": 100,
+                "min_height_normal_mm": 1.5,
+                "min_height_molded_mm": 3.0
+            },
+            {
+                "max_pdp_area_cm2": 500,
+                "min_height_normal_mm": 2.5,
+                "min_height_molded_mm": 4.0
+            },
+            {
+                "max_pdp_area_cm2": 2500,
+                "min_height_normal_mm": 4.0,
+                "min_height_molded_mm": 6.0
+            },
+            {
+                "max_pdp_area_cm2": 999999,
+                "min_height_normal_mm": 6.0,
+                "min_height_molded_mm": 6.0
+            }
+        ],
+        "character_aspect_ratio": {
+            "min_width_to_height_ratio": 0.3333,
+            "exceptions": [
+                "1",
+                "i",
+                "I",
+                "l"
+            ]
+        },
+        "clear_space_surrounding_quantity": {
+            "above_and_below": "1 * numeral_height",
+            "left_and_right": "2 * numeral_height"
+        }
+    },
+    "Rule_26_Exemptions": {
+        "rule_26_a_small_packages": {
+            "threshold_net_weight_g": 10,
+            "threshold_net_volume_ml": 10,
+            "excluded_commodities": [
+                "tobacco",
+                "tobacco products"
+            ],
+            "bypasses_rules": [
+                "Rule 6"
+            ]
+        },
+        "rule_26_b_restaurant_fast_food": {
+            "condition": "packed_by_restaurant_or_hotel",
+            "bypasses_rules": [
+                "Rule 6"
+            ]
+        },
+        "rule_26_c_dpco_drugs": {
+            "condition": "scheduled_drug_under_dpco_2013",
+            "governing_body": "NPPA"
+        },
+        "rule_26_d_bulk_agri_produce": {
+            "threshold_weight_kg": 50,
+            "bypasses_rules": [
+                "Chapter II retail rules"
+            ]
+        },
+        "rule_26_e_institutional_industrial": {
+            "condition": "institutional_or_industrial_consumer",
+            "mandatory_declaration": "Not for Retail Sale"
+        },
+        "rule_26_f_loose_garments": {
+            "condition": "sold_in_open_or_loose_form_with_inspection",
+            "allowed_declaration_form": "attached_hangtag_or_label"
+        }
+    },
+    "Jurisdiction_Rules": {
+        "description": "LMPC bounds. AI must ignore FSSAI entities.",
+        "ignore_entities": [
+            "fssai_license",
+            "nutrition_facts",
+            "veg_logo",
+            "non_veg_logo"
+        ]
+    },
+    "Package_Types": {
+        "retail": {
+            "requires_mrp": true,
+            "requires_mfg_date": true
+        },
+        "wholesale": {
+            "rule_reference": "Rule 24",
+            "requires_mrp": false,
+            "requires_mfg_date": false,
+            "requires_manufacturer_address": true,
+            "requires_net_quantity": true
+        },
+        "multi_piece_outer": {
+            "rule_reference": "Rule 16, 17",
+            "requires_total_mrp": true,
+            "requires_total_quantity": true
+        }
+    },
+    "Jan_Vishwas_Penalties": {
+        "missing_declaration": {
+            "act_section": "Section 36(1)",
+            "offense_type": "civil_wrong",
+            "action": "issue_improvement_notice_or_compound"
+        },
+        "altered_mrp": {
+            "rule_reference": "Rule 16",
+            "action": "flag_for_human_review_compounding"
+        }
+    }
+}

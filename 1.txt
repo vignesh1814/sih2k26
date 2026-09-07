@@ -1,0 +1,171 @@
+# SIH26034 — Research Workspace Build Agent Prompt
+
+## 0. Purpose
+
+This prompt is for an **autonomous agent with web browsing/search and file-system access** (e.g., a coding/research agent). Its job is not to write the dossier itself — it is to **go out, find, retrieve, verify, and organize** the raw source material that the dossier (see `SIH26034_Research_Dossier_Prompt_v2.md`) will be written from. Treat this as building a **local, citable, well-indexed research corpus** that a human or a second agent can then synthesize into the dossier without re-doing discovery work.
+
+Do not summarize or draft dossier prose in this pass. Your output is a **workspace**, not a report.
+
+---
+
+## 1. Workspace Structure
+
+Create and maintain this exact directory tree at the workspace root (`./sih26034-research/`):
+
+```
+sih26034-research/
+├── 00_index/
+│   ├── INDEX.md                 # master catalog of everything collected
+│   ├── progress.md              # checklist against dossier sections, status per item
+│   └── source_log.csv           # flat log: id, title, url, tier, date_retrieved, category, status
+├── 01_problem_statement/
+├── 02_legal_framework/
+│   ├── act_and_rules/
+│   ├── amendments_notifications/
+│   └── faqs_circulars/
+├── 03_ocr_survey/
+├── 04_computer_vision/
+├── 05_layout_multimodal/
+├── 06_nlp_extraction/
+├── 07_rule_engines/
+├── 08_datasets/
+│   ├── manifests/                # one .md per dataset, not the raw data itself
+│   └── licenses/
+├── 09_competitors_existing_systems/
+├── 10_patents_prior_art/
+├── 11_open_source/
+├── 12_benchmarks_papers/
+├── 13_architecture_references/
+├── 14_security_privacy/
+└── 99_dead_ends/                 # searches that yielded nothing, so they aren't repeated
+```
+
+Every numbered folder maps to a research area in the dossier prompt. Do not invent new top-level folders without a corresponding gap in `progress.md`.
+
+---
+
+## 2. Per-Source Acquisition Protocol
+
+For every source you decide to keep, do all of the following — no exceptions:
+
+1. **Fetch and verify** — actually open the page/document; do not save a source from a search snippet alone.
+2. **Classify tier** — Tier 1 (government/primary legal), Tier 2 (peer-reviewed/technical-authoritative), Tier 3 (vendor/engineering), Tier 4 (secondary/context-only), per the dossier prompt's tiering rules.
+3. **Save a local record** as `NNN_short-slug.md` inside the relevant folder, containing:
+
+   ```markdown
+   ---
+   id: <sequential ID, matches source_log.csv>
+   title: <exact title>
+   issuing_body_or_authors: <as applicable>
+   date_published_or_amended: <YYYY-MM-DD or best available>
+   date_retrieved: <YYYY-MM-DD>
+   url: <canonical URL>
+   tier: <1-4>
+   category: <folder/topic>
+   license: <if known — esp. for datasets/code>
+   confidence: <High/Medium/Low + one-line reason>
+   ---
+
+   ## Why this source matters
+   <1-3 sentences, your own words>
+
+   ## Key extracted points
+   - <point 1, your own paraphrase, with page/section reference if long document>
+   - <point 2>
+   - ...
+
+   ## Verbatim excerpts (if any)
+   <Only for primary legal/government text where reproduction is appropriate,
+   or short (<25-word) quotes from other sources. Never paste full paper text,
+   full articles, or long passages from copyrighted secondary sources — paraphrase
+   instead and note "full text at <url>".>
+   ```
+
+4. **Append a row** to `00_index/source_log.csv`: `id,title,url,tier,category,date_retrieved,status(kept/rejected/broken),notes`.
+5. **Never bulk-download entire datasets, full papers as PDFs of copyrighted work, or entire GitHub repos** into the workspace. For datasets and code, save only a **manifest** (metadata + link + license + a small representative sample if explicitly permitted) — not the corpus itself. For papers, save your notes/extraction, not a copy of the PDF, unless it is confirmed public domain or open-access with a license permitting redistribution (record that license explicitly if so).
+6. **If a source turns out irrelevant, paywalled, dead, or unverifiable**, log it in `99_dead_ends/` with a one-line reason instead of silently dropping it — this prevents re-searching the same dead end later.
+
+---
+
+## 3. Category-Specific Instructions
+
+### 3.1 Legal framework (`02_legal_framework/`)
+Search India Code, the Department of Consumer Affairs site, Legal Metrology division pages, and e-Gazette for: the Legal Metrology Act 2009, the Legal Metrology (Packaged Commodities) Rules 2011, every amendment/corrigendum since, and any official FAQ/circular. For each, record the **exact clause/rule numbers** relevant to declarations (net quantity, MRP, manufacturer/packer/importer details, dates, consumer care, country of origin, PDP requirements, font/size rules). Build `02_legal_framework/AMENDMENT_TIMELINE.md` as you go — append a row per amendment found, don't wait until the end.
+
+### 3.2 Problem statement (`01_problem_statement/`)
+Retrieve the official SIH26034 listing from the SIH portal. Save the exact text (short quote/paraphrase per copyright rules) plus any official SIH guidelines on submission format, evaluation, or team requirements if published.
+
+### 3.3 OCR / CV / Layout / NLP surveys (`03`–`06`)
+For each tool/model/paper you find (Tesseract, PaddleOCR, EasyOCR, LayoutLM, Donut, etc.), save: official docs/repo link, any published benchmark table (with the dataset it was measured on — never save a bare number without its evaluation context), license, and last-active/maintenance signal for open-source tools.
+
+### 3.4 Datasets (`08_datasets/`)
+One manifest file per dataset candidate:
+```markdown
+---
+name:
+domain:
+image_count:
+languages:
+label_types:
+license:
+resolution:
+source_url:
+usable_as_is: yes/no/needs-adaptation
+---
+Notes on relevance and any access restrictions.
+```
+Flag anything with an unclear or non-redistributable license in `08_datasets/licenses/CONCERNS.md`.
+
+### 3.5 Competitors, patents, open-source (`09`–`11`)
+For competitors: capabilities, tech (where disclosed), target market, geography, pricing if public — save as one file per system. For patents: use a patent search engine, record patent number, filing date, core technique, and your own note on overlap/opportunity (no infringement opinions). For open-source: record stars/last-commit-date/license/architecture summary; do not fork or vendor the code into this workspace, just link + summarize.
+
+---
+
+## 4. Master Index Maintenance
+
+`00_index/INDEX.md` must always reflect current state — regenerate/update it after each work session, grouped by dossier section, e.g.:
+
+```markdown
+## D. Legal / Regulatory Framework
+- [Legal Metrology Act 2009](../02_legal_framework/act_and_rules/001_lm-act-2009.md) — Tier 1
+- [PC Rules 2011](../02_legal_framework/act_and_rules/002_pc-rules-2011.md) — Tier 1
+...
+
+## H. OCR Technology Survey
+- [PaddleOCR overview](../03_ocr_survey/010_paddleocr.md) — Tier 3
+...
+```
+
+`00_index/progress.md` tracks completion against the dossier's research areas (§5–§21 of the dossier prompt) as a checklist:
+```markdown
+- [x] Legal Metrology Act & Rules — 4 sources collected
+- [x] Amendment timeline — 6 amendments logged, last checked 2026-09-06
+- [ ] OCR benchmark comparison — 3/6 engines covered, missing TrOCR, PP-OCR v4, cloud OCR pricing
+- [ ] Dataset survey — in progress
+...
+```
+Update this after every meaningful batch of work, not just at the end — an interrupted run should leave the workspace in a usable, resumable state.
+
+---
+
+## 5. Verification & Refresh Pass
+
+Before declaring a category "done":
+- Re-check that every Tier 1 legal source is the **current/consolidated** version, not a superseded one — note explicitly if a source has since been amended and link the amendment.
+- Re-check that every benchmark number has its evaluation dataset/conditions recorded, not just a bare percentage.
+- Spot-check 2-3 saved URLs per category are still live; log and replace/flag dead ones.
+
+---
+
+## 6. Session Output
+
+At the end of each work session, produce a short session note in `00_index/` (`session_YYYY-MM-DD.md`): what was added, what's still missing, what looked like a dead end and why, and what the next session should prioritize. This is what makes the workspace resumable across multiple agent runs rather than requiring a fresh start each time.
+
+---
+
+## 7. Hard Constraints
+
+- Never fabricate a URL, title, date, or benchmark number. If you can't verify it, log it as `UNVERIFIED` in the relevant file and do not carry it into any downstream summary as fact.
+- Never store full copyrighted text (papers, articles, code beyond short reference snippets) — extract and paraphrase, link to the original.
+- Never download raw dataset files into the workspace — manifest + link only.
+- Stop and flag (don't silently skip) any source that requires a login/paywall you can't access — record it as `PAYWALLED` with the citation info you could get from the abstract/listing page, so a human can retrieve it later if needed.

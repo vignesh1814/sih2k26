@@ -1,0 +1,110 @@
+{
+  "image_id": "SYN_003",
+  "metadata": {
+    "packaging_type": "carton",
+    "capture_angle": "front_pdp",
+    "has_reference_marker": false
+  },
+  "bounding_boxes": [
+    {
+      "label": "PDP",
+      "bbox_xyxy": [
+        20,
+        10,
+        780,
+        480
+      ],
+      "transcription": "Principal Display Panel"
+    },
+    {
+      "label": "Generic_Name",
+      "bbox_xyxy": [
+        40,
+        28,
+        301,
+        52
+      ],
+      "transcription": "Generic Name: Roasted Cashews"
+    },
+    {
+      "label": "NetQty_Area",
+      "bbox_xyxy": [
+        40,
+        68,
+        211,
+        92
+      ],
+      "transcription": "Net Quantity: 200 L"
+    },
+    {
+      "label": "MRP_Area",
+      "bbox_xyxy": [
+        40,
+        108,
+        175,
+        132
+      ],
+      "transcription": "MRP: Rs. 504.02"
+    },
+    {
+      "label": "USP_Area",
+      "bbox_xyxy": [
+        40,
+        128,
+        283,
+        152
+      ],
+      "transcription": "Unit Sale Price: Rs. 2.52/L"
+    },
+    {
+      "label": "MfgDate_Area",
+      "bbox_xyxy": [
+        40,
+        148,
+        193,
+        172
+      ],
+      "transcription": "Mfg Date: 11/2023"
+    },
+    {
+      "label": "Address_Area",
+      "bbox_xyxy": [
+        40,
+        188,
+        670,
+        212
+      ],
+      "transcription": "Mfd by: Pinnacle Foods Pvt Ltd, Plot 61, Sector 4, Mumbai, Maharashtra"
+    },
+    {
+      "label": "ConsumerCare_Area",
+      "bbox_xyxy": [
+        40,
+        228,
+        490,
+        252
+      ],
+      "transcription": "Consumer Care: 1800-890-4422 | support@pinnacle.in"
+    }
+  ],
+  "declarations": {
+    "manufacturer_name": "Pinnacle Foods Pvt Ltd",
+    "manufacturer_address": "Plot 61, Sector 4, Mumbai, Maharashtra",
+    "generic_name": "Roasted Cashews",
+    "net_quantity_value": 200,
+    "net_quantity_unit": "L",
+    "mfg_month_year": "11/2023",
+    "mrp_value": 504.02,
+    "unit_sale_price": 2.52
+  },
+  "compliance_ground_truth": {
+    "overall_status": "FAIL",
+    "violations": [
+      {
+        "rule_code": "R6(1)(e)",
+        "statutory_reference": "Rule 6(1)(e) of LMPC Rules 2011",
+        "description": "Mandatory phrase \"Inclusive of all taxes\" omitted"
+      }
+    ]
+  }
+}
