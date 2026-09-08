@@ -61,36 +61,36 @@ const AdminPanel: React.FC = () => {
         },
         {
           id: '2',
-          name: 'Field Inspector',
+          name: 'HQ Superior Officer',
+          email: 'superior@lm.gov.in',
+          role: 'SUPERIOR',
+          department: 'National Enforcement & Review Board',
+          jurisdiction: 'National HQ',
+          status: 'ACTIVE',
+          last_login: '2026-09-07T16:15:00Z',
+          created_at: '2026-01-10T00:00:00Z'
+        },
+        {
+          id: '3',
+          name: 'Field Inspector Rajesh Sharma',
           email: 'inspector@lm.gov.in',
           role: 'INSPECTOR',
-          department: 'Metrology Central Enforcement Wing',
-          jurisdiction: 'Maharashtra',
+          department: 'Central Enforcement Flying Squad',
+          jurisdiction: 'Delhi & NCR Zone',
           status: 'ACTIVE',
           last_login: '2026-09-07T14:20:00Z',
           created_at: '2026-02-15T00:00:00Z'
         },
         {
-          id: '3',
-          name: 'Compliance Analyst',
-          email: 'analyst@lm.gov.in',
-          role: 'ANALYST',
-          department: 'Compliance Monitoring Division',
-          jurisdiction: 'National',
+          id: '4',
+          name: 'Dabur India Compliance Desk',
+          email: 'manufacturer@brand.com',
+          role: 'MANUFACTURER',
+          department: 'Legal & Regulatory Compliance Unit',
+          jurisdiction: 'Corporate All India',
           status: 'ACTIVE',
           last_login: '2026-09-07T13:10:00Z',
           created_at: '2026-03-01T00:00:00Z'
-        },
-        {
-          id: '4',
-          name: 'View Only User',
-          email: 'viewer@lm.gov.in',
-          role: 'VIEWER',
-          department: 'Statistics Division',
-          jurisdiction: 'National',
-          status: 'ACTIVE',
-          last_login: '2026-09-06T16:45:00Z',
-          created_at: '2026-04-10T00:00:00Z'
         },
         {
           id: '5',
@@ -141,7 +141,7 @@ const AdminPanel: React.FC = () => {
 
   const handleDeleteUser = (userId: string) => {
     const user = users.find(u => u.id === userId)
-    if (!canManageUser(user?.role || 'VIEWER')) {
+    if (!user || !canManageUser(user.role)) {
       toast.error('You cannot delete a user with equal or higher role')
       return
     }
@@ -165,15 +165,15 @@ const AdminPanel: React.FC = () => {
   }
 
   const RoleBadge: React.FC<{ role: UserRole }> = ({ role }) => {
-    const colors = {
-      ADMIN: 'bg-purple-100 text-purple-700',
-      INSPECTOR: 'bg-blue-100 text-blue-700',
-      ANALYST: 'bg-green-100 text-green-700',
-      VIEWER: 'bg-gray-100 text-gray-700'
+    const colors: Record<UserRole, string> = {
+      ADMIN: 'bg-red-100 text-red-700 border border-red-200',
+      SUPERIOR: 'bg-purple-100 text-purple-700 border border-purple-200',
+      INSPECTOR: 'bg-blue-100 text-blue-700 border border-blue-200',
+      MANUFACTURER: 'bg-amber-100 text-amber-700 border border-amber-200'
     }
     
     return (
-      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${colors[role]}`}>
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${colors[role]}`}>
         {role}
       </span>
     )
@@ -268,10 +268,10 @@ const AdminPanel: React.FC = () => {
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="ALL">All Roles</option>
-                  <option value="ADMIN">Admin</option>
-                  <option value="INSPECTOR">Inspector</option>
-                  <option value="ANALYST">Analyst</option>
-                  <option value="VIEWER">Viewer</option>
+                  <option value="ADMIN">System Admin</option>
+                  <option value="SUPERIOR">Superior Officer (HQ)</option>
+                  <option value="INSPECTOR">Field Inspector</option>
+                  <option value="MANUFACTURER">Manufacturer</option>
                 </select>
               </div>
 

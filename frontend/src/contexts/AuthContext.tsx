@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { UserRole } from '../types/auth'
+import { loginUser, logoutUser } from '../services/api'
 
 interface User {
   id: string
@@ -28,7 +29,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Check for existing session
     const storedUser = localStorage.getItem('lm_user')
     if (storedUser) {
-      setUser(JSON.parse(storedUser))
+      try {
+        setUser(JSON.parse(storedUser))
+      } catch (e) {
+        localStorage.removeItem('lm_user')
+      }
     }
     setIsLoading(false)
   }, [])
@@ -36,46 +41,56 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      // Simulate API call - replace with actual authentication
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Mock authentication logic
+      // Call MERN Express backend auth endpoint
+      try {
+        const data = await loginUser(email, password)
+        if (data && data.user) {
+          setUser(data.user)
+          localStorage.setItem('lm_user', JSON.stringify(data.user))
+          if (data.token) localStorage.setItem('lm_token', data.token)
+          return
+        }
+      } catch (apiErr) {
+        console.warn('[AuthContext] Backend login error, attempting local fallback:', apiErr)
+      }
+
+      // Mock authentication fallback
       const mockUsers: User[] = [
         {
           id: '1',
-          email: 'admin@lm.gov.in',
-          name: 'Admin User',
-          role: 'ADMIN',
-          department: 'Legal Metrology Directorate',
-          jurisdiction: 'National'
-        },
-        {
-          id: '2',
           email: 'inspector@lm.gov.in',
-          name: 'Field Inspector',
+          name: 'Field Inspector Sharma',
           role: 'INSPECTOR',
           department: 'Metrology Central Enforcement Wing',
           jurisdiction: 'Maharashtra'
         },
         {
+          id: '2',
+          email: 'superior@lm.gov.in',
+          name: 'Dr. R. K. Verma (Controller)',
+          role: 'SUPERIOR',
+          department: 'Directorate of Legal Metrology HQ',
+          jurisdiction: 'National HQ (New Delhi)'
+        },
+        {
           id: '3',
-          email: 'analyst@lm.gov.in',
-          name: 'Compliance Analyst',
-          role: 'ANALYST',
-          department: 'Compliance Monitoring Division',
-          jurisdiction: 'National'
+          email: 'manufacturer@brand.com',
+          name: 'Sunrise Foods & FMCG Ltd',
+          role: 'MANUFACTURER',
+          department: 'Corporate Regulatory & Packaging Division',
+          jurisdiction: 'GIDC Gujarat & Pan-India'
         },
         {
           id: '4',
-          email: 'viewer@lm.gov.in',
-          name: 'View Only User',
-          role: 'VIEWER',
-          department: 'Statistics Division',
+          email: 'admin@lm.gov.in',
+          name: 'System Superadmin',
+          role: 'ADMIN',
+          department: 'National IT & Standards Directorate',
           jurisdiction: 'National'
         }
       ]
 
-      const authenticatedUser = mockUsers.find(u => u.email === email)
+      const authenticatedUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase())
       if (!authenticatedUser) {
         throw new Error('Invalid credentials')
       }
@@ -89,9 +104,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }
 
-  const logout = () => {
-    setUser(null)
-    localStorage.removeItem('lm_user')
+  const logout = async () => {
+    try {
+      await logoutUser(user)
+    } catch (e) {
+      console.warn('[AuthContext] Logout call failed:', e)
+    } finally {
+      setUser(null)
+      localStorage.removeItem('lm_user')
+      localStorage.removeItem('lm_token')
+    }
   }
 
   return (

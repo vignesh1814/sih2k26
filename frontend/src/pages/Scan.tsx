@@ -91,101 +91,6 @@ const INITIAL_PANELS: Record<PanelKey, PanelSlot> = {
   }
 }
 
-export interface ActualProductSimulation {
-  id: string
-  name: string
-  category: string
-  type: 'single' | 'multi'
-  panels: Array<{
-    slot: PanelKey
-    label: string
-    imagePath: string
-    filename: string
-  }>
-  badge: string
-  description: string
-}
-
-export const ACTUAL_PRODUCT_SIMULATIONS: ActualProductSimulation[] = [
-  {
-    id: 'parle_g_multi',
-    name: 'Parle-G Gluco Biscuits (Multi-Panel Fusion)',
-    category: 'Biscuits / FMCG',
-    type: 'multi',
-    badge: 'Multi-Panel (Front & Back)',
-    description: "Actual photographs of India's iconic biscuit pack: Front PDP and Back panel with nutrition, FSSAI license, barcode, and batch code.",
-    panels: [
-      { slot: 'front', label: 'Front (PDP)', imagePath: '/dataset/real_images/parle_g_front.jpg', filename: 'parle_g_front.jpg' },
-      { slot: 'back', label: 'Back (Nutrition & Barcode)', imagePath: '/dataset/real_images/parle_g_back.jpg', filename: 'parle_g_back.jpg' }
-    ]
-  },
-  {
-    id: 'britannia_bourbon',
-    name: 'Britannia Bourbon Chocolate Pack',
-    category: 'Bakery & Biscuits',
-    type: 'single',
-    badge: 'Retail Store Photo',
-    description: 'Genuine retail photograph of Britannia Bourbon chocolate sandwich biscuits with live brand name & net quantity detection.',
-    panels: [
-      { slot: 'front', label: 'Front (PDP)', imagePath: '/dataset/real_images/britannia_bourbon.jpg', filename: 'britannia_bourbon.jpg' }
-    ]
-  },
-  {
-    id: 'tata_salt',
-    name: 'Tata Salt 1kg Iodized Pack',
-    category: 'Essential Commodities',
-    type: 'single',
-    badge: 'Actual Commodity Photo',
-    description: 'Real photo of Tata Salt 1kg consumer pouch inspecting SI units (kg) and statutory product branding.',
-    panels: [
-      { slot: 'front', label: 'Front (PDP)', imagePath: '/dataset/real_images/tata_salt.jpg', filename: 'tata_salt.jpg' }
-    ]
-  },
-  {
-    id: 'maggi_noodles',
-    name: 'Maggi 2-Minute Masala Noodles',
-    category: 'Instant Foods',
-    type: 'single',
-    badge: 'Actual Pouch Photo',
-    description: 'Authentic Maggi 2-minute noodle packet evaluating net weight declaration and principal display panel formatting.',
-    panels: [
-      { slot: 'front', label: 'Front (PDP)', imagePath: '/dataset/real_images/maggi_noodles.jpg', filename: 'maggi_noodles.jpg' }
-    ]
-  },
-  {
-    id: 'haldiram_namkeen',
-    name: "Haldiram's Traditional Sev Bhujia",
-    category: 'Packaged Snacks',
-    type: 'single',
-    badge: 'Actual Snack Pouch',
-    description: "Authentic Haldiram's savory snack packaging examining FSSAI license and metric weight declaration.",
-    panels: [
-      { slot: 'front', label: 'Front (PDP)', imagePath: '/dataset/real_images/haldiram_namkeen.jpg', filename: 'haldiram_namkeen.jpg' }
-    ]
-  },
-  {
-    id: 'dettol_soap',
-    name: 'Dettol Original Germ Protection Pack',
-    category: 'Personal Hygiene',
-    type: 'single',
-    badge: 'Actual Carton Photo',
-    description: 'Personal care soap carton examining consumer commodity statutory labeling.',
-    panels: [
-      { slot: 'front', label: 'Front (PDP)', imagePath: '/dataset/real_images/dettol.jpg', filename: 'dettol.jpg' }
-    ]
-  }
-]
-
-// Actual authentic samples from synthetic_dataset/
-const REAL_DATASET_ITEMS = [
-  { id: 'SYN_000', label: 'SYN_000 • Fully Compliant (PASS)', status: 'PASS', issue: 'None (Full LMPC Compliance)' },
-  { id: 'SYN_001', label: 'SYN_001 • Missing Inclusive Taxes (FAIL)', status: 'FAIL', issue: 'Rule 6(1)(e): MRP omits "Inclusive of all taxes"' },
-  { id: 'SYN_003', label: 'SYN_003 • Illegal "ltrs" Unit (FAIL)', status: 'FAIL', issue: 'Rule 6(1)(c) & Rule 13: Non-standard unit "ltrs"' },
-  { id: 'SYN_006', label: 'SYN_006 • Prohibited "gms" Unit (FAIL)', status: 'FAIL', issue: 'Rule 6(1)(c) & Rule 13: Non-standard unit "gms"' },
-  { id: 'SYN_002', label: 'SYN_002 • Compliant 200g Pack (PASS)', status: 'PASS', issue: 'None (Standard SI grams unit)' },
-  { id: 'SYN_007', label: 'SYN_007 • Compliant 500g Pack (PASS)', status: 'PASS', issue: 'None (Valid statutory declarations)' }
-]
-
 const Scan: React.FC = () => {
   const { hasPermission } = useRBAC()
   
@@ -198,140 +103,11 @@ const Scan: React.FC = () => {
   const [showHitlModal, setShowHitlModal] = useState(false)
   const [hitlVerified, setHitlVerified] = useState(false)
   const [officerNotes, setOfficerNotes] = useState('')
-  const [selectedRealSampleId, setSelectedRealSampleId] = useState('SYN_000')
 
   const singleFileInputRef = useRef<HTMLInputElement>(null)
   const batchFileInputRef = useRef<HTMLInputElement>(null)
 
   const capturedCount = Object.values(panels).filter(p => p.previewUrl !== null).length
-
-  // Live simulation using actual real-world commodity photographs from Open Food Facts / Retail
-  const runActualProductSimulation = async (simId: string) => {
-    const sim = ACTUAL_PRODUCT_SIMULATIONS.find(s => s.id === simId)
-    if (!sim) return
-
-    setIsScanning(true)
-    try {
-      const updatedPanels = { ...INITIAL_PANELS }
-      const loadedFiles: Array<{ slot: PanelKey; label: string; file: File; url: string }> = []
-
-      for (const p of sim.panels) {
-        const res = await fetch(p.imagePath)
-        if (!res.ok) throw new Error(`Could not load ${p.imagePath}`)
-        const blob = await res.blob()
-        const file = new File([blob], p.filename, { type: blob.type || 'image/jpeg' })
-        loadedFiles.push({ slot: p.slot, label: p.label, file, url: p.imagePath })
-        updatedPanels[p.slot] = {
-          ...updatedPanels[p.slot],
-          file: file,
-          previewUrl: p.imagePath
-        }
-      }
-
-      setPanels(updatedPanels)
-      setActivePanelKey(sim.panels[0].slot)
-
-      if (sim.type === 'single') {
-        const result = await scanPackage(loadedFiles[0].file)
-        setScanResult(result)
-        toast.success(`Processed actual photo: ${sim.name}`)
-      } else {
-        const payload = loadedFiles.map(f => ({ panel: f.label, file: f.file }))
-        const result = await scanMultiPackages(payload)
-        setScanResult(result)
-        toast.success(`Fused ${loadedFiles.length} actual packaging angles: ${sim.name}`)
-      }
-    } catch (err) {
-      console.error('[Scan] Real simulation error:', err)
-      toast.error('Failed to process real packaging photo')
-    } finally {
-      setIsScanning(false)
-    }
-  }
-
-  // Real scan execution using actual synthetic image file sent to FastAPI backend
-  const loadAndScanRealDatasetItem = async (imageId: string) => {
-    setIsScanning(true)
-    try {
-      const imgUrl = `/dataset/images/${imageId}.png`
-      const res = await fetch(imgUrl)
-      if (!res.ok) throw new Error(`Could not load /dataset/images/${imageId}.png`)
-      const blob = await res.blob()
-      const file = new File([blob], `${imageId}.png`, { type: 'image/png' })
-
-      // Set preview for front panel
-      setPanels(prev => ({
-        ...prev,
-        front: {
-          ...prev.front,
-          file: file,
-          previewUrl: imgUrl
-        }
-      }))
-      setActivePanelKey('front')
-
-      // Call backend /api/v1/scan with the real file
-      const result = await scanPackage(file)
-      setScanResult(result)
-      toast.success(`Processed authentic dataset label ${imageId}.png: Status ${result.status}`)
-    } catch (err) {
-      console.error('[Scan] Real dataset load error:', err)
-      toast.error('Failed to load dataset image')
-    } finally {
-      setIsScanning(false)
-    }
-  }
-
-  // Real multi-panel demo using actual authentic dataset files
-  const loadRealMultiPanelDemo = async (isViolation = false) => {
-    setIsScanning(true)
-    try {
-      const frontId = isViolation ? 'SYN_001' : 'SYN_000'
-      const backId = 'SYN_002'
-      const sideId = isViolation ? 'SYN_006' : 'SYN_004'
-      const bottomId = 'SYN_008'
-
-      const fetchFile = async (id: string) => {
-        const res = await fetch(`/dataset/images/${id}.png`)
-        const blob = await res.blob()
-        return new File([blob], `${id}.png`, { type: 'image/png' })
-      }
-
-      const [fFront, fBack, fSide, fBottom] = await Promise.all([
-        fetchFile(frontId),
-        fetchFile(backId),
-        fetchFile(sideId),
-        fetchFile(bottomId)
-      ])
-
-      setPanels({
-        front: { ...INITIAL_PANELS.front, file: fFront, previewUrl: `/dataset/images/${frontId}.png` },
-        back: { ...INITIAL_PANELS.back, file: fBack, previewUrl: `/dataset/images/${backId}.png` },
-        side_mrp: { ...INITIAL_PANELS.side_mrp, file: fSide, previewUrl: `/dataset/images/${sideId}.png` },
-        bottom: { ...INITIAL_PANELS.bottom, file: fBottom, previewUrl: `/dataset/images/${bottomId}.png` },
-        top: INITIAL_PANELS.top,
-        side_nutrition: INITIAL_PANELS.side_nutrition
-      })
-
-      setActivePanelKey('front')
-
-      // Call actual backend /api/v1/scan-multi endpoint
-      const payload = [
-        { panel: 'Front (PDP)', file: fFront },
-        { panel: 'Back Panel', file: fBack },
-        { panel: 'Side (Price & Dates)', file: fSide },
-        { panel: 'Bottom Panel', file: fBottom }
-      ]
-      const result = await scanMultiPackages(payload)
-      setScanResult(result)
-      toast.success(`Fused 4 authentic package surfaces on backend: Status ${result.status}`)
-    } catch (err) {
-      console.error('[Scan] Real multi-panel error:', err)
-      toast.error('Failed to execute multi-panel audit')
-    } finally {
-      setIsScanning(false)
-    }
-  }
 
   const handleSinglePanelSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -476,119 +252,24 @@ const Scan: React.FC = () => {
             <span>Packaging Statutory Compliance Studio</span>
           </h1>
           <p className="text-gray-600 text-sm mt-1">
-            Real OCR transcription &amp; deterministic Zen Engine validation under LMPC Rules, 2011.
+            Real OCR transcription &amp; deterministic legal validation under LMPC Rules, 2011.
           </p>
         </div>
 
-        {/* Actual Commodity Photo Simulation Quick-Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => runActualProductSimulation('parle_g_multi')}
-            className="text-xs bg-cyan-50 text-cyan-800 border border-cyan-300 px-3 py-1.5 rounded-lg hover:bg-cyan-100 font-bold transition-colors flex items-center space-x-1 shadow-sm"
-          >
-            <Camera className="h-3.5 w-3.5 text-cyan-600" />
-            <span>Parle-G 2-Panel (Actual Photo)</span>
-          </button>
-          <button
-            onClick={() => runActualProductSimulation('britannia_bourbon')}
-            className="text-xs bg-amber-50 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-lg hover:bg-amber-100 font-bold transition-colors flex items-center space-x-1 shadow-sm"
-          >
-            <Camera className="h-3.5 w-3.5 text-amber-600" />
-            <span>Britannia Bourbon (Actual Photo)</span>
-          </button>
-          <button
-            onClick={() => runActualProductSimulation('tata_salt')}
-            className="text-xs bg-blue-50 text-blue-800 border border-blue-300 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-bold transition-colors flex items-center space-x-1 shadow-sm"
-          >
-            <Camera className="h-3.5 w-3.5 text-blue-600" />
-            <span>Tata Salt 1kg (Actual Photo)</span>
-          </button>
-          <button
-            onClick={() => runActualProductSimulation('maggi_noodles')}
-            className="text-xs bg-rose-50 text-rose-800 border border-rose-300 px-3 py-1.5 rounded-lg hover:bg-rose-100 font-bold transition-colors flex items-center space-x-1 shadow-sm"
-          >
-            <Camera className="h-3.5 w-3.5 text-rose-600" />
-            <span>Maggi Noodles (Actual Photo)</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Real-World Packaging Photographic Simulations Suite */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 rounded-xl shadow-md text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4 border border-indigo-800/40">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-indigo-500/20 rounded-lg border border-indigo-400/30">
-            <Camera className="h-5 w-5 text-cyan-400" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">
-                Real-World Packaging Photographic Simulations:
-              </span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full font-semibold">
-                100% Genuine Retail Photos
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
-              Loads authentic consumer commodity packaging photos (Parle-G, Bourbon, Tata Salt, Maggi, Haldiram's, Dettol) with live RapidOCR &amp; deterministic LMPC compliance engine.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            onChange={(e) => {
-              if (e.target.value) runActualProductSimulation(e.target.value)
-            }}
-            defaultValue=""
-            className="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-          >
-            <option value="" disabled>Select an Actual Product Simulation...</option>
-            {ACTUAL_PRODUCT_SIMULATIONS.map((sim) => (
-              <option key={sim.id} value={sim.id}>
-                📷 {sim.name} — {sim.badge}
-              </option>
-            ))}
-          </select>
-
-          <button
-            onClick={() => runActualProductSimulation('parle_g_multi')}
-            className="text-xs bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-2 rounded-lg font-bold transition-colors shadow-sm flex items-center space-x-1"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Simulate Parle-G 2-Angle</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Statutory Rule Benchmark Edge Cases Bar */}
-      <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-xs">
         <div className="flex items-center space-x-2">
-          <Database className="h-4 w-4 text-gov-gold flex-shrink-0" />
-          <span className="text-slate-300 font-medium">
-            Statutory Rule Edge Cases Benchmark (20 Synthetic Labels for Rule 6/13 Edge Scenarios):
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <select
-            value={selectedRealSampleId}
-            onChange={(e) => {
-              setSelectedRealSampleId(e.target.value)
-              loadAndScanRealDatasetItem(e.target.value)
-            }}
-            className="bg-slate-700 border border-slate-600 text-white text-xs rounded px-2.5 py-1 focus:outline-none"
-          >
-            {REAL_DATASET_ITEMS.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
           <button
-            onClick={() => loadRealMultiPanelDemo(false)}
-            className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-500 px-2.5 py-1 rounded transition-colors"
+            onClick={() => singleFileInputRef.current?.click()}
+            className="flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm transition-all"
           >
-            Fused 4-Panel Synthetic
+            <Camera className="h-4 w-4" />
+            <span>Capture / Upload Photo</span>
+          </button>
+          <button
+            onClick={() => batchFileInputRef.current?.click()}
+            className="flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white rounded-xl shadow-sm transition-all"
+          >
+            <Upload className="h-4 w-4" />
+            <span>Batch Upload Panels</span>
           </button>
         </div>
       </div>

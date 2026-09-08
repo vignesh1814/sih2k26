@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'INSPECTOR' | 'ANALYST' | 'VIEWER'
+export type UserRole = 'INSPECTOR' | 'SUPERIOR' | 'MANUFACTURER' | 'ADMIN'
 
 export interface Permission {
   id: string
@@ -14,41 +14,42 @@ export interface RolePermissions {
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  ADMIN: [
-    { id: 'admin_all', name: 'Full Access', description: 'Complete system access', resource: '*', action: '*' },
-    { id: 'user_manage', name: 'User Management', description: 'Create, edit, delete users', resource: 'users', action: 'manage' },
-    { id: 'role_manage', name: 'Role Management', description: 'Manage user roles and permissions', resource: 'roles', action: 'manage' },
-    { id: 'audit_view', name: 'View Audit Logs', description: 'Access system audit trails', resource: 'audit', action: 'view' },
-    { id: 'config_manage', name: 'System Configuration', description: 'Modify system settings', resource: 'config', action: 'manage' },
-    { id: 'scan_all', name: 'All Scan Operations', description: 'Perform any scanning operation', resource: 'scan', action: '*' },
-    { id: 'report_all', name: 'All Report Operations', description: 'Generate and manage all reports', resource: 'reports', action: '*' },
+  SUPERIOR: [
+    { id: 'analytics_all', name: 'Superior Analytics', description: 'Access national inspector and manufacturer analytics', resource: 'superior_analytics', action: 'view' },
+    { id: 'challan_manage', name: 'Manage Challans', description: 'Issue and track statutory compounding notices', resource: 'challans', action: 'manage' },
+    { id: 'scan_view', name: 'View All Scans', description: 'View all field inspection scan records', resource: 'scan', action: 'view' },
+    { id: 'report_view', name: 'View All Reports', description: 'View statutory compliance reports', resource: 'reports', action: 'view' },
+    { id: 'audit_view', name: 'View Audit Trail', description: 'Access legal audit trail logs', resource: 'audit', action: 'view' },
+    { id: 'docs_view', name: 'View Legal Framework', description: 'Access Legal Metrology Act & Rules references', resource: 'docs', action: 'view' },
   ],
   INSPECTOR: [
-    { id: 'scan_create', name: 'Create Scans', description: 'Initiate new compliance scans', resource: 'scan', action: 'create' },
-    { id: 'scan_view', name: 'View Scans', description: 'View scan results and details', resource: 'scan', action: 'view' },
+    { id: 'scan_create', name: 'Create Scans', description: 'Initiate new package label compliance scans', resource: 'scan', action: 'create' },
+    { id: 'scan_view', name: 'View Scans', description: 'View scan results and bounding box detections', resource: 'scan', action: 'view' },
     { id: 'report_view', name: 'View Reports', description: 'View statutory reports', resource: 'reports', action: 'view' },
     { id: 'report_generate', name: 'Generate Reports', description: 'Generate compliance reports', resource: 'reports', action: 'generate' },
     { id: 'report_download', name: 'Download Reports', description: 'Download PDF reports', resource: 'reports', action: 'download' },
     { id: 'audit_view', name: 'View Audit Logs', description: 'View statutory audit trail', resource: 'audit', action: 'view' },
     { id: 'docs_view', name: 'View Documentation', description: 'View legal metrology references', resource: 'docs', action: 'view' },
   ],
-  ANALYST: [
-    { id: 'scan_view', name: 'View Scans', description: 'View scan results and details', resource: 'scan', action: 'view' },
-    { id: 'report_view', name: 'View Reports', description: 'View generated reports', resource: 'reports', action: 'view' },
-    { id: 'report_download', name: 'Download Reports', description: 'Download PDF reports', resource: 'reports', action: 'download' },
-    { id: 'audit_view', name: 'View Audit Logs', description: 'Access system audit trails', resource: 'audit', action: 'view' },
-    { id: 'analytics_view', name: 'View Analytics', description: 'Access compliance analytics', resource: 'analytics', action: 'view' },
+  MANUFACTURER: [
+    { id: 'mfg_portal', name: 'Manufacturer Portal', description: 'Access brand legal notices and inspection audits', resource: 'manufacturer_portal', action: 'view' },
+    { id: 'challan_view', name: 'View Received Challans', description: 'View statutory notices issued against brand', resource: 'challans', action: 'view' },
+    { id: 'scan_self', name: 'Self Verification Scan', description: 'Pre-market label verification check', resource: 'scan', action: 'create' },
+    { id: 'report_view', name: 'View Brand Reports', description: 'View market surveillance inspection reports', resource: 'reports', action: 'view' },
+    { id: 'docs_view', name: 'View Packaging Standards', description: 'View LMPC Rule 6 compliance checklist', resource: 'docs', action: 'view' },
   ],
-  VIEWER: [
-    { id: 'scan_view', name: 'View Scans', description: 'View scan results and details', resource: 'scan', action: 'view' },
-    { id: 'report_view', name: 'View Reports', description: 'View generated reports', resource: 'reports', action: 'view' },
-    { id: 'dashboard_view', name: 'View Dashboard', description: 'Access main dashboard', resource: 'dashboard', action: 'view' },
+  ADMIN: [
+    { id: 'admin_all', name: 'Full Access', description: 'Complete system access across all modules', resource: '*', action: '*' },
+    { id: 'user_manage', name: 'User Management', description: 'Create, edit, delete users', resource: 'users', action: 'manage' },
+    { id: 'audit_view', name: 'View Audit Logs', description: 'Access system audit trails', resource: 'audit', action: 'view' },
+    { id: 'superior_analytics', name: 'Superior Analytics', description: 'Access superior analytics', resource: 'superior_analytics', action: 'view' },
+    { id: 'mfg_portal', name: 'Manufacturer Portal', description: 'Access manufacturer portal', resource: 'manufacturer_portal', action: 'view' },
   ],
 }
 
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   ADMIN: 100,
-  INSPECTOR: 75,
-  ANALYST: 50,
-  VIEWER: 25,
+  SUPERIOR: 80,
+  INSPECTOR: 60,
+  MANUFACTURER: 40,
 }

@@ -59,9 +59,10 @@ ENV/
 env.bak/
 venv.bak/
 
-# Node / Frontend
+# Node / Frontend & Express Server
 node_modules/
 frontend/node_modules/
+server/node_modules/
 frontend/dist/
 dist/
 npm-debug.log*
@@ -72,6 +73,8 @@ yarn-error.log*
 backend/uploads/
 backend/uploads/*
 !backend/uploads/.gitkeep
+server/uploads/
+server/uploads/*
 scratch/
 debug_scan.png
 
