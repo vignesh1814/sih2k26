@@ -2,6 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
 import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const reportsDir = path.resolve(__dirname, '..', '..', 'reports');
 
 export class ReportService {
   /**
@@ -10,7 +15,6 @@ export class ReportService {
    * @returns {Promise<{ pdf_path: string, pdf_url: string, evidence_hash: string }>}
    */
   static async generateReport({ scanId, scanData, officerName = 'Legal Metrology Officer', station = 'Central Directorate', notes = '' }) {
-    const reportsDir = path.join(process.cwd(), 'server', 'reports');
     if (!fs.existsSync(reportsDir)) {
       fs.mkdirSync(reportsDir, { recursive: true });
     }

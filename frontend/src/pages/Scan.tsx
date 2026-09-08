@@ -1,43 +1,34 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useRBAC } from '../contexts/RBACContext'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { 
   Upload, 
   Camera, 
-  AlertCircle, 
   CheckCircle, 
   XCircle, 
-  RefreshCw,
-  Scan as ScanIcon,
-  Eye,
-  EyeOff,
-  Download,
-  Ruler,
-  Layers,
-  Sparkles,
-  ShieldAlert,
-  Plus,
-  Trash2,
-  HelpCircle,
-  Database,
-  Tag,
-  CheckCircle2,
-  AlertTriangle,
-  Scale,
-  Building2,
-  ChevronRight,
-  ShieldCheck,
-  FileText
+  AlertCircle,
+  RefreshCw, 
+  Scan as ScanIcon, 
+  ShieldAlert, 
+  Trash2, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Scale, 
+  ShieldCheck, 
+  FileText,
+  ArrowRight,
+  ExternalLink
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { 
   scanPackage, 
-  scanMultiPackages,
+  scanMultiPackages, 
   generateReport, 
-  ScanResponse,
-  RuleViolation,
-  InspectionSession
+  recordVerificationDecisions,
+  ScanResponse, 
+  InspectionSession 
 } from '../services/api'
+import StartInspectionModal from '../components/StartInspectionModal'
 
 type PanelKey = 'front' | 'back' | 'bottom' | 'top' | 'side_mrp' | 'side_nutrition'
 
@@ -53,102 +44,96 @@ interface PanelSlot {
 const INITIAL_PANELS: Record<PanelKey, PanelSlot> = {
   front: {
     key: 'front',
-    label: 'Front (PDP)',
-    subtitle: 'Principal Display Panel',
-    expectedDeclarations: ['Generic Name', 'Net Quantity (SI Units)'],
-    file: null,
-    previewUrl: null
-  },
-  back: {
-    key: 'back',
-    label: 'Back Panel',
-    subtitle: 'Statutory Manufacturer & Helpline',
-    expectedDeclarations: ['Manufacturer Name & Address', 'Consumer Helpline / Email'],
+    label: 'Front PDP (Principal Display)',
+    subtitle: 'Brand name, generic name & net quantity',
+    expectedDeclarations: ['Generic Name', 'Net Quantity'],
     file: null,
     previewUrl: null
   },
   side_mrp: {
     key: 'side_mrp',
-    label: 'Side (Price & Dates)',
-    subtitle: 'MRP & Unit Sale Price',
-    expectedDeclarations: ['MRP (Inclusive of Taxes)', 'Unit Sale Price (USP)', 'Mfg/Expiry Date'],
+    label: 'MRP & Batch Panel',
+    subtitle: 'MRP (incl taxes), Unit Sale Price & Mfg Date',
+    expectedDeclarations: ['MRP', 'Unit Sale Price (USP)', 'Mfg / Pkd Date'],
     file: null,
     previewUrl: null
   },
-  bottom: {
-    key: 'bottom',
-    label: 'Bottom Panel',
-    subtitle: 'Batch & Barcode',
-    expectedDeclarations: ['Barcode (EAN-13)', 'Batch / Lot Number'],
-    file: null,
-    previewUrl: null
-  },
-  top: {
-    key: 'top',
-    label: 'Top Panel',
-    subtitle: 'Seal & Branding',
-    expectedDeclarations: ['Tamper-evident seal', 'Brand crest'],
+  back: {
+    key: 'back',
+    label: 'Back Panel / Address Details',
+    subtitle: 'Manufacturer details & consumer care info',
+    expectedDeclarations: ['Manufacturer Address', 'Customer Care Info', 'Country of Origin'],
     file: null,
     previewUrl: null
   },
   side_nutrition: {
     key: 'side_nutrition',
-    label: 'Side (Nutrition/FSSAI)',
-    subtitle: 'License & Ingredients',
-    expectedDeclarations: ['FSSAI / ISI License', 'Ingredients list'],
+    label: 'Side Information Panel',
+    subtitle: 'Ingredients, barcode & statutory notices',
+    expectedDeclarations: ['Barcode (EAN)', 'Directions / Warning'],
+    file: null,
+    previewUrl: null
+  },
+  top: {
+    key: 'top',
+    label: 'Top Cap / Seal Panel',
+    subtitle: 'Overprinted MRP or security seals',
+    expectedDeclarations: ['Batch No.', 'Seal Verification'],
+    file: null,
+    previewUrl: null
+  },
+  bottom: {
+    key: 'bottom',
+    label: 'Bottom Panel / Base',
+    subtitle: 'Embossed volume marks & tare codes',
+    expectedDeclarations: ['Container Code'],
     file: null,
     previewUrl: null
   }
 }
 
-interface ViolationVerificationState {
-  [ruleCode: string]: 'CONFIRMED' | 'REJECTED' | 'NEEDS_REVIEW' | 'PENDING'
-}
+type ViolationVerificationState = Record<string, 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'NEEDS_REVIEW'>
 
 const Scan: React.FC = () => {
+  const { user } = useAuth()
   const navigate = useNavigate()
-  const { hasPermission } = useRBAC()
-  
+  const [searchParams] = useSearchParams()
+  const isSelfCheckMode = searchParams.get('mode') === 'self-check' || user?.role === 'MANUFACTURER'
+
   const [panels, setPanels] = useState<Record<PanelKey, PanelSlot>>(INITIAL_PANELS)
   const [activePanelKey, setActivePanelKey] = useState<PanelKey>('front')
   const [isScanning, setIsScanning] = useState(false)
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null)
-  const [activeSession, setActiveSession] = useState<InspectionSession | null>(null)
-  
-  const [showBoundingBoxes, setShowBoundingBoxes] = useState(true)
-  const [selectedViolation, setSelectedViolation] = useState<RuleViolation | null>(null)
   const [verificationStates, setVerificationStates] = useState<ViolationVerificationState>({})
-  
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false)
+  const [isStartModalOpen, setIsStartModalOpen] = useState(false)
+
+  // Active Field Inspection Session
+  const [activeSession, setActiveSession] = useState<InspectionSession | null>(() => {
+    const raw = sessionStorage.getItem('sih26034_active_session')
+    if (raw) {
+      try { return JSON.parse(raw) } catch (e) { return null }
+    }
+    return null
+  })
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    const raw = sessionStorage.getItem('sih26034_active_session')
-    if (raw) {
-      try {
-        setActiveSession(JSON.parse(raw))
-      } catch (e) {
-        console.warn('Could not parse active session:', e)
-      }
-    }
-  }, [])
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, panelKey?: PanelKey) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, panelKey: PanelKey) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const targetKey = panelKey || activePanelKey
     const previewUrl = URL.createObjectURL(file)
-
     setPanels(prev => ({
       ...prev,
-      [targetKey]: {
-        ...prev[targetKey],
+      [panelKey]: {
+        ...prev[panelKey],
         file,
         previewUrl
       }
     }))
-    toast.success(`Loaded image for ${panels[targetKey].label}`)
+    toast.success(`Added photo to ${panels[panelKey].label}`)
   }
 
   const handleRemovePanel = (panelKey: PanelKey, e: React.MouseEvent) => {
@@ -167,13 +152,11 @@ const Scan: React.FC = () => {
   const handleExecuteScan = async () => {
     const populatedPanels = Object.values(panels).filter(p => p.file !== null)
     if (populatedPanels.length === 0) {
-      toast.error('Please capture or upload at least 1 package panel photo.')
+      toast.error('Please upload or capture at least one package panel image.')
       return
     }
 
     setIsScanning(true)
-    setScanResult(null)
-
     try {
       let result: ScanResponse
       if (populatedPanels.length === 1) {
@@ -186,6 +169,16 @@ const Scan: React.FC = () => {
 
       setScanResult(result)
 
+      // Store commodity details for Quantity Verification pre-filling
+      if (result.declarations) {
+        sessionStorage.setItem('sih26034_last_scanned_commodity', JSON.stringify({
+          generic_name: result.declarations.generic_name || 'Inspected Commodity Package',
+          net_quantity: result.declarations.net_quantity || '500',
+          unit: result.declarations.unit || 'g',
+          scan_id: result.scan_id
+        }))
+      }
+
       // Initialize verification states
       const initVerif: ViolationVerificationState = {}
       result.violations.forEach(v => {
@@ -196,7 +189,7 @@ const Scan: React.FC = () => {
       if (result.status === 'PASS') {
         toast.success('Package is Fully Compliant with Legal Metrology PCR Rules!')
       } else if (result.status === 'FAIL') {
-        toast.error(`Compliance Check Failed: ${result.violations.length} statutory defect(s) detected.`)
+        toast.error(`Compliance Audit: ${result.violations.length} statutory defect(s) detected.`)
       } else {
         toast('Review Required: Human verification needed.', { icon: '⚠️' })
       }
@@ -208,12 +201,52 @@ const Scan: React.FC = () => {
     }
   }
 
-  const handleVerifyViolation = (ruleCode: string, state: 'CONFIRMED' | 'REJECTED' | 'NEEDS_REVIEW') => {
-    setVerificationStates(prev => ({
-      ...prev,
+  const handleVerifyViolation = async (ruleCode: string, state: 'CONFIRMED' | 'REJECTED' | 'NEEDS_REVIEW') => {
+    const nextStates = {
+      ...verificationStates,
       [ruleCode]: state
-    }))
-    toast.success(`Violation marked as ${state.replace(/_/g, ' ')}`)
+    }
+    setVerificationStates(nextStates)
+
+    if (scanResult?.scan_id) {
+      try {
+        const payloadDecisions = Object.entries(nextStates).map(([code, decision]) => ({
+          rule_code: code,
+          decision
+        }))
+        const res = await recordVerificationDecisions(
+          scanResult.scan_id, 
+          payloadDecisions, 
+          undefined, 
+          user?.name || 'Field Inspector'
+        )
+        if (res?.scan) {
+          setScanResult(prev => prev ? { ...prev, status: res.scan.status } : null)
+        }
+        toast.success(`Verification decision [${state}] recorded`)
+      } catch (e) {
+        toast.success(`Marked as ${state}`)
+      }
+    }
+  }
+
+  const handleGenerateStatutoryReport = async () => {
+    if (!scanResult) return
+    setIsGeneratingReport(true)
+    try {
+      const res = await generateReport({
+        scan_id: scanResult.scan_id,
+        officer_name: user?.name || 'Field Inspector',
+        station_jurisdiction: user?.department || 'Legal Metrology Enforcement Wing',
+        notes: activeSession ? `Session: ${activeSession.session_id} - ${activeSession.entity_name}` : 'Field Inspection'
+      })
+      toast.success('Statutory Inspection PDF Report Generated!')
+      window.open(`/api/v1/report/${scanResult.scan_id}/download`, '_blank')
+    } catch (e: any) {
+      toast.error('Failed to generate report')
+    } finally {
+      setIsGeneratingReport(false)
+    }
   }
 
   const mandatoryDeclarationsList = [
@@ -269,57 +302,72 @@ const Scan: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Active Session Bar */}
-      {activeSession ? (
-        <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-2xl p-4 shadow-md flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-white/10 rounded-xl">
-              <ShieldCheck className="h-6 w-6 text-emerald-300" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-mono font-bold text-xs bg-blue-700/80 px-2 py-0.5 rounded text-blue-100">
-                  {activeSession.session_id}
-                </span>
-                <span className="text-xs text-blue-200">• {activeSession.inspection_type}</span>
+      {/* Session Header / Banner */}
+      {!isSelfCheckMode ? (
+        activeSession ? (
+          <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-2xl p-4 shadow-md flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-white/10 rounded-xl">
+                <ShieldCheck className="h-6 w-6 text-emerald-300" />
               </div>
-              <p className="font-black text-sm text-white mt-0.5">{activeSession.entity_name || 'Premises Under Audit'}</p>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="font-mono font-bold text-xs bg-blue-700/80 px-2 py-0.5 rounded text-blue-100">
+                    {activeSession.session_id}
+                  </span>
+                  <span className="text-xs text-blue-200">• {activeSession.inspection_type}</span>
+                </div>
+                <p className="font-black text-sm text-white mt-0.5">{activeSession.entity_name || 'Premises Under Audit'}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => navigate('/quantity')}
+                className="px-3 py-1.5 bg-blue-800/80 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1"
+              >
+                <Scale className="h-3.5 w-3.5" />
+                <span>Quantity Check</span>
+              </button>
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem('sih26034_active_session')
+                  setActiveSession(null)
+                  toast('Inspection session ended', { icon: 'ℹ️' })
+                }}
+                className="px-3 py-1.5 bg-gray-800/80 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold"
+              >
+                Close Session
+              </button>
             </div>
           </div>
-
-          <div className="flex items-center space-x-2">
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between text-xs text-amber-900">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+              <span>No official inspection session linked. You can scan standalone packages or initiate a formal session.</span>
+            </div>
             <button
-              onClick={() => navigate('/quantity')}
-              className="px-3 py-1.5 bg-blue-800/80 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1"
+              onClick={() => setIsStartModalOpen(true)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all"
             >
-              <Scale className="h-3.5 w-3.5" />
-              <span>Weigh Sample</span>
-            </button>
-            <button
-              onClick={() => navigate('/seizures')}
-              className="px-3 py-1.5 bg-red-800/80 hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1"
-            >
-              <ShieldAlert className="h-3.5 w-3.5" />
-              <span>Seizure Memo</span>
+              Start Inspection Session
             </button>
           </div>
-        </div>
+        )
       ) : (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between text-xs text-amber-900">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between text-xs text-emerald-900">
           <div className="flex items-center space-x-2">
-            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
-            <span>No active field inspection session linked. You can scan standalone or start an official session.</span>
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+            <div>
+              <span className="font-bold text-emerald-950">Pre-Market Packaging Self-Check Mode</span>
+              <p className="text-[11px] text-emerald-700">Audit packaging artwork to identify rule non-compliances prior to commercial printing.</p>
+            </div>
           </div>
-          <button
-            onClick={() => navigate('/entities')}
-            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs"
-          >
-            Identify Premises & Start
-          </button>
         </div>
       )}
 
-      {/* Main Grid */}
+      {/* Main Scan Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Multi-Angle Capture Panel */}
         <div className="lg:col-span-6 space-y-4">
@@ -328,7 +376,7 @@ const Scan: React.FC = () => {
               <div>
                 <h2 className="text-base font-bold text-gray-900 flex items-center space-x-2">
                   <Camera className="h-5 w-5 text-blue-600" />
-                  <span>Multi-Angle Package Photo Capture</span>
+                  <span>Package Surface Capture</span>
                 </h2>
                 <p className="text-xs text-gray-500">Capture Front (PDP), Back, Sides, and Bottom panels</p>
               </div>
@@ -348,35 +396,42 @@ const Scan: React.FC = () => {
                     key={p.key}
                     type="button"
                     onClick={() => setActivePanelKey(p.key)}
-                    className={`p-2.5 rounded-xl border text-left transition-all relative ${
+                    className={`p-2.5 rounded-xl text-left border transition-all relative ${
                       isSelected
-                        ? 'bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20 shadow-sm'
+                        ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-600'
                         : isCaptured
-                        ? 'bg-emerald-50/60 border-emerald-300'
-                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100/70'
+                        ? 'border-emerald-300 bg-emerald-50/40 hover:border-emerald-400'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-gray-900 truncate">{p.label}</span>
-                      {isCaptured && <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />}
+                      <span className="font-bold text-xs text-gray-900 truncate">
+                        {p.label.split(' ')[0]}
+                      </span>
+                      {isCaptured && (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      )}
                     </div>
-                    <span className="text-[10px] text-gray-500 block truncate mt-0.5">{p.subtitle}</span>
+                    <p className="text-[10px] text-gray-500 truncate mt-0.5">
+                      {isCaptured ? 'Photo Ready' : 'Empty'}
+                    </p>
                   </button>
                 )
               })}
             </div>
 
-            {/* Active Panel Viewfinder / Upload Box */}
-            <div className="relative border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-slate-50 flex flex-col items-center justify-center min-h-[280px] overflow-hidden">
+            {/* Active Panel Viewport */}
+            <div className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50/50 flex flex-col items-center justify-center min-h-[300px] relative overflow-hidden">
               {panels[activePanelKey].previewUrl ? (
-                <div className="relative w-full h-full flex flex-col items-center">
+                <div className="w-full h-full flex flex-col items-center">
                   <img
                     src={panels[activePanelKey].previewUrl!}
                     alt={panels[activePanelKey].label}
-                    className="max-h-[240px] w-auto object-contain rounded-xl shadow-md"
+                    className="max-h-64 object-contain rounded-xl shadow-md"
                   />
                   <div className="mt-3 flex items-center space-x-2">
                     <button
+                      type="button"
                       onClick={(e) => handleRemovePanel(activePanelKey, e)}
                       className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 flex items-center space-x-1"
                     >
@@ -421,7 +476,6 @@ const Scan: React.FC = () => {
                 </div>
               )}
 
-              {/* Hidden Inputs */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -448,7 +502,7 @@ const Scan: React.FC = () => {
               {isScanning ? (
                 <>
                   <RefreshCw className="h-5 w-5 animate-spin" />
-                  <span>Extracting Declarations & Evaluating LMPC Rules...</span>
+                  <span>Processing AI OCR & Compliance Engine...</span>
                 </>
               ) : (
                 <>
@@ -460,85 +514,102 @@ const Scan: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: AI Extraction & Declaration Detection Matrix */}
+        {/* Right Column: AI Extraction & Violation Cards */}
         <div className="lg:col-span-6 space-y-4">
           {scanResult ? (
             <div className="space-y-4">
-              {/* Overall Compliance Verdict Banner */}
-              <div className={`p-5 rounded-2xl border text-white shadow-md flex items-center justify-between ${
-                scanResult.status === 'PASS' ? 'bg-gradient-to-r from-emerald-800 to-teal-900 border-emerald-500' :
-                scanResult.status === 'FAIL' ? 'bg-gradient-to-r from-red-900 to-rose-950 border-red-600' :
-                'bg-gradient-to-r from-amber-800 to-orange-950 border-amber-600'
+              {/* Verdict Header */}
+              <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                scanResult.status === 'PASS' ? 'bg-green-50 border-green-200' :
+                scanResult.status === 'FAIL' ? 'bg-red-50 border-red-200' :
+                'bg-yellow-50 border-yellow-200'
               }`}>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    {scanResult.status === 'PASS' ? <CheckCircle2 className="h-6 w-6 text-emerald-300" /> : <AlertTriangle className="h-6 w-6 text-red-300" />}
-                    <h3 className="text-lg font-black tracking-wide">
-                      {scanResult.status === 'PASS' ? 'COMPLIANT PACKAGE' : scanResult.status === 'FAIL' ? 'NON-COMPLIANT' : 'REVIEW REQUIRED'}
-                    </h3>
+                <div className="flex items-center space-x-3">
+                  <div className={`p-2 rounded-xl ${
+                    scanResult.status === 'PASS' ? 'bg-green-600 text-white' :
+                    scanResult.status === 'FAIL' ? 'bg-red-600 text-white' :
+                    'bg-yellow-600 text-white'
+                  }`}>
+                    {scanResult.status === 'PASS' ? <CheckCircle className="h-6 w-6" /> :
+                     scanResult.status === 'FAIL' ? <XCircle className="h-6 w-6" /> :
+                     <AlertCircle className="h-6 w-6" />}
                   </div>
-                  <p className="text-xs text-white/80 mt-1">
-                    {scanResult.violations.length === 0
-                      ? 'All mandatory Legal Metrology (Packaged Commodities) declarations verified.'
-                      : `${scanResult.violations.length} statutory non-compliance defect(s) detected.`}
-                  </p>
+                  <div>
+                    <h3 className="font-bold text-sm text-gray-900">
+                      Compliance Verdict: {scanResult.status}
+                    </h3>
+                    <p className="text-xs text-gray-600">
+                      Confidence: {Math.round(scanResult.overall_confidence * 100)}% • {scanResult.violations.length} finding(s)
+                    </p>
+                  </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-[10px] uppercase text-white/70 block">AI Confidence</span>
-                  <span className="text-xl font-black">{Math.round(scanResult.overall_confidence * 100)}%</span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleGenerateStatutoryReport}
+                    disabled={isGeneratingReport}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center space-x-1"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>{isGeneratingReport ? 'Building PDF...' : 'Download PDF'}</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Declaration Detection Matrix */}
-              <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                  <div>
-                    <h3 className="text-sm font-bold text-gray-900">Mandatory Declaration Detection Matrix</h3>
-                    <p className="text-[11px] text-gray-500">Legal Metrology (Packaged Commodities) Rules, 2011</p>
-                  </div>
-                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md">
-                    Rule 6 Checklist
-                  </span>
+              {/* Next Step Workflow Actions for Field Inspector */}
+              {!isSelfCheckMode && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between text-xs text-blue-900">
+                  <span>Physical Quantity Verification: Compare declared vs actual scale weight</span>
+                  <button
+                    onClick={() => navigate('/quantity')}
+                    className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-bold flex items-center space-x-1"
+                  >
+                    <span>Weigh Sample</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
                 </div>
+              )}
 
-                <div className="divide-y divide-gray-100">
-                  {mandatoryDeclarationsList.map((dec, idx) => (
-                    <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
+              {/* Extracted Statutory Declarations Checklist */}
+              <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-3">
+                <h3 className="font-bold text-sm text-gray-900">
+                  Rule 6 Mandatory Declarations Checklist
+                </h3>
+                <div className="divide-y divide-gray-100 text-xs">
+                  {mandatoryDeclarationsList.map((item, idx) => (
+                    <div key={idx} className="py-2.5 flex items-center justify-between">
                       <div>
                         <div className="flex items-center space-x-2">
-                          <span className="font-bold text-gray-900">{dec.name}</span>
-                          <span className="text-[10px] text-gray-400 font-mono">({dec.rule})</span>
+                          <span className="font-mono text-[10px] font-bold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                            {item.rule}
+                          </span>
+                          <span className="font-bold text-gray-800">{item.name}</span>
                         </div>
-                        <p className="text-[11px] text-gray-600 mt-0.5 truncate max-w-[280px]">
-                          {dec.value}
-                        </p>
+                        <p className="text-gray-500 mt-0.5">{item.value}</p>
                       </div>
 
-                      <div>
-                        {dec.detected ? (
-                          <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full flex items-center space-x-1">
-                            <CheckCircle className="h-3 w-3" />
-                            <span>✓ Detected</span>
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 bg-red-100 text-red-800 font-bold text-[10px] rounded-full flex items-center space-x-1">
-                            <XCircle className="h-3 w-3" />
-                            <span>❌ Missing</span>
-                          </span>
-                        )}
-                      </div>
+                      {item.detected ? (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center space-x-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>Detected</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full flex items-center space-x-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>Missing</span>
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Human-in-the-Loop Violation Cards */}
+              {/* Human-in-the-loop Verification Cards */}
               {scanResult.violations.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-black text-gray-900 flex items-center space-x-2">
+                  <h3 className="font-bold text-sm text-gray-900 flex items-center space-x-2">
                     <ShieldAlert className="h-4 w-4 text-red-600" />
-                    <span>Statutory Violation Cards (Inspector Verification Required)</span>
+                    <span>Statutory Findings (Human Verification)</span>
                   </h3>
 
                   {scanResult.violations.map((v, idx) => {
@@ -576,7 +647,7 @@ const Scan: React.FC = () => {
 
                         {/* Inspector Action Buttons */}
                         <div className="pt-2 border-t border-gray-100 flex items-center justify-end space-x-2 text-xs">
-                          <span className="text-[11px] text-gray-500 mr-auto font-medium">Officer Decision:</span>
+                          <span className="text-[11px] text-gray-500 mr-auto font-medium">Officer Action:</span>
                           <button
                             onClick={() => handleVerifyViolation(v.rule_code, 'CONFIRMED')}
                             className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
@@ -599,7 +670,7 @@ const Scan: React.FC = () => {
                               currentStatus === 'NEEDS_REVIEW' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
                             }`}
                           >
-                            [NEEDS REVIEW]
+                            [REVIEW]
                           </button>
                         </div>
                       </div>
@@ -619,6 +690,16 @@ const Scan: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Start Inspection Session Modal */}
+      <StartInspectionModal
+        isOpen={isStartModalOpen}
+        onClose={() => setIsStartModalOpen(false)}
+        onSessionStarted={(session) => {
+          setActiveSession(session)
+          sessionStorage.setItem('sih26034_active_session', JSON.stringify(session))
+        }}
+      />
     </div>
   )
 }

@@ -29,6 +29,8 @@ import {
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
+import { useAuth } from '../contexts/AuthContext'
+
 const PAYMENT_METHODS = [
   { id: 'netbanking', name: 'Treasury Net Banking (SBI / HDFC / ICICI / PNB)', icon: '🏛️' },
   { id: 'upi', name: 'UPI Fast Settlement (Bharat e-Pay Treasury)', icon: '⚡' },
@@ -37,6 +39,8 @@ const PAYMENT_METHODS = [
 ]
 
 const ManufacturerPortal: React.FC = () => {
+  const { user } = useAuth()
+  const brandName = user?.organization || user?.name || 'Sunrise Foods & FMCG Ltd'
   const [data, setData] = useState<ManufacturerDashboardData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'challans' | 'audits' | 'compliance'>('challans')
@@ -55,7 +59,7 @@ const ManufacturerPortal: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const res = await fetchManufacturerDashboard('Sunrise Foods & FMCG Ltd')
+      const res = await fetchManufacturerDashboard(brandName)
       setData(res)
     } catch (err) {
       console.error('Failed to load manufacturer dashboard:', err)

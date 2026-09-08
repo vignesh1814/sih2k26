@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { Wifi, WifiOff, Cloud, Database, CheckCircle2, AlertCircle, RefreshCw, Trash2, Download } from 'lucide-react'
 import { getOfflineQueue, saveOfflineQueue, clearSyncedItems, cacheEntitiesLocally, cacheRulesLocally, OfflineQueueItem } from '../services/offlineStorage'
-import { fetchEntities, fetchRules } from '../services/api'
+import { fetchEntities, fetchRules, syncOfflineQueue } from '../services/api'
+import toast from 'react-hot-toast'
 
 const OfflineSync: React.FC = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
@@ -56,17 +57,27 @@ const OfflineSync: React.FC = () => {
     setSyncing(true)
     const currentQueue = getOfflineQueue()
 
-    // Simulate batch sync processing
-    await new Promise((r) => setTimeout(r, 1200))
+    try {
+      if (currentQueue.length > 0) {
+        await syncOfflineQueue(currentQueue)
+        toast.success(`Successfully synchronized ${currentQueue.length} records to central database!`)
+      } else {
+        toast.success('Offline queue is already synchronized')
+      }
 
-    const updatedQueue = currentQueue.map(item => ({
-      ...item,
-      status: 'SYNCED' as const
-    }))
+      const updatedQueue = currentQueue.map(item => ({
+        ...item,
+        status: 'SYNCED' as const
+      }))
 
-    saveOfflineQueue(updatedQueue)
-    setQueue(updatedQueue)
-    setSyncing(false)
+      saveOfflineQueue(updatedQueue)
+      setQueue(updatedQueue)
+    } catch (err: any) {
+      console.error('Error syncing queue:', err)
+      toast.error('Sync failed, records preserved locally in storage')
+    } finally {
+      setSyncing(false)
+    }
   }
 
   const handleClear = () => {

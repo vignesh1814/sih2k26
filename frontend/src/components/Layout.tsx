@@ -6,132 +6,131 @@ import {
   LayoutDashboard, 
   Scan, 
   FileText, 
-  History, 
   LogOut, 
   Menu, 
   X, 
   Shield,
   Book,
-  Users,
   BarChart3,
   Building2,
-  AlertTriangle,
-  Scale,
-  Ruler
+  Scale
 } from 'lucide-react'
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { user, logout } = useAuth()
-  const { hasPermission } = useRBAC()
+  const { hasPermission, hasAnyRole } = useRBAC()
   const location = useLocation()
   const navigate = useNavigate()
 
+  const isDLMO = hasAnyRole(['DLMO', 'SUPERIOR'])
+  const isInspector = user?.role === 'INSPECTOR'
+  const isManufacturer = user?.role === 'MANUFACTURER'
+
   const navigation = [
-    // Superior Specific Overview
-    { 
-      name: 'Superior Analytics & Challans', 
-      href: '/superior-analytics', 
-      icon: BarChart3, 
-      permission: { resource: 'superior_analytics', action: 'view' },
-      badge: 'HQ Authority',
-      allowedRoles: ['SUPERIOR', 'ADMIN']
-    },
-    // Manufacturer Specific Portal
-    { 
-      name: 'Challans & Audit Reports', 
-      href: '/manufacturer-portal', 
-      icon: Building2, 
-      permission: { resource: 'manufacturer_portal', action: 'view' },
-      badge: 'Brand Portal',
-      allowedRoles: ['MANUFACTURER', 'SUPERIOR', 'ADMIN']
-    },
-    // Field Inspector & Superior Shared Workflow
-    { 
-      name: 'Inspector Dashboard', 
-      href: '/dashboard', 
-      icon: LayoutDashboard, 
-      permission: { resource: 'dashboard', action: 'view' },
-      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
-    },
-    {
-      name: 'Premises & Entities',
-      href: '/entities',
-      icon: Building2,
-      permission: { resource: 'scan', action: 'create' },
-      badge: 'Rule 27',
-      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
-    },
-    { 
-      name: user?.role === 'MANUFACTURER' ? 'Pre-Market Label Scan' : 'Scan Package', 
-      href: '/scan', 
-      icon: Scan, 
-      permission: { resource: 'scan', action: 'create' } 
-    },
-    {
-      name: 'Quantity Verification',
-      href: '/quantity',
-      icon: Scale,
-      permission: { resource: 'scan', action: 'create' },
-      badge: 'MPE Sched. 2',
-      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
-    },
-    { 
-      name: user?.role === 'MANUFACTURER' ? 'Market Inspection Records' : 'Inspection Reports', 
-      href: '/reports', 
-      icon: FileText, 
-      permission: { resource: 'reports', action: 'view' } 
-    },
-    {
-      name: 'Entity Compliance History',
-      href: '/history',
-      icon: History,
-      permission: { resource: 'reports', action: 'view' },
-      badge: 'Analytics',
-      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
-    },
-    {
-      name: 'Seizure & Evidence',
-      href: '/seizures',
-      icon: AlertTriangle,
-      permission: { resource: 'scan', action: 'create' },
-      badge: 'Sec. 15',
-      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
-    },
-    {
-      name: 'Offline Field Sync',
-      href: '/sync',
-      icon: Shield,
-      permission: { resource: 'scan', action: 'create' },
-      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
-    },
-    { 
-      name: 'Audit Trail', 
-      href: '/audit-trail', 
-      icon: BarChart3, 
-      permission: { resource: 'audit', action: 'view' },
-      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
-    },
-    { 
-      name: 'LMPC Legal Standards', 
-      href: '/documentation', 
-      icon: Book, 
-      permission: { resource: 'docs', action: 'view' } 
-    },
+    // 1. DLMO Navigation Items
+    ...(isDLMO ? [
+      { 
+        name: 'DLMO Analytics', 
+        href: '/superior-analytics', 
+        icon: BarChart3, 
+        badge: 'Authority',
+        permission: { resource: 'superior_analytics', action: 'view' }
+      },
+      { 
+        name: 'Inspection Reports & Challans', 
+        href: '/reports', 
+        icon: FileText, 
+        permission: { resource: 'reports', action: 'view' } 
+      },
+      { 
+        name: 'Audit Trail', 
+        href: '/audit-trail', 
+        icon: Shield, 
+        permission: { resource: 'audit', action: 'view' }
+      },
+      { 
+        name: 'Statutory Manual', 
+        href: '/documentation', 
+        icon: Book, 
+        permission: { resource: 'docs', action: 'view' } 
+      },
+    ] : []),
+
+    // 2. Field Inspector Navigation Items
+    ...(isInspector ? [
+      { 
+        name: 'Inspector Dashboard', 
+        href: '/dashboard', 
+        icon: LayoutDashboard, 
+        permission: { resource: 'dashboard', action: 'view' }
+      },
+      { 
+        name: 'Scan Package Label', 
+        href: '/scan', 
+        icon: Scan, 
+        badge: 'Rule 6',
+        permission: { resource: 'scan', action: 'create' } 
+      },
+      {
+        name: 'Quantity Verification',
+        href: '/quantity',
+        icon: Scale,
+        badge: 'MPE Sched. 2',
+        permission: { resource: 'scan', action: 'create' }
+      },
+      { 
+        name: 'Inspection Reports', 
+        href: '/reports', 
+        icon: FileText, 
+        permission: { resource: 'reports', action: 'view' } 
+      },
+      {
+        name: 'Offline Field Sync',
+        href: '/sync',
+        icon: Shield,
+        permission: { resource: 'scan', action: 'create' }
+      },
+      { 
+        name: 'Statutory Manual', 
+        href: '/documentation', 
+        icon: Book, 
+        permission: { resource: 'docs', action: 'view' } 
+      },
+    ] : []),
+
+    // 3. Manufacturer Navigation Items
+    ...(isManufacturer ? [
+      { 
+        name: 'Brand Compliance Portal', 
+        href: '/manufacturer-portal', 
+        icon: Building2, 
+        badge: 'Brand Console',
+        permission: { resource: 'manufacturer_portal', action: 'view' }
+      },
+      { 
+        name: 'Pre-Market Self-Check', 
+        href: '/scan', 
+        icon: Scan, 
+        badge: 'Pre-Market',
+        permission: { resource: 'scan', action: 'create' } 
+      },
+      { 
+        name: 'Inspection Archive', 
+        href: '/reports', 
+        icon: FileText, 
+        permission: { resource: 'reports', action: 'view' } 
+      },
+      { 
+        name: 'Packaging Guidelines', 
+        href: '/documentation', 
+        icon: Book, 
+        permission: { resource: 'docs', action: 'view' } 
+      },
+    ] : [])
   ]
 
-  const adminNavigation = [
-    { name: 'Admin Panel', href: '/admin', icon: Users, permission: { resource: 'users', action: 'manage' } },
-  ]
-
-  const filteredNavigation = navigation.filter(item => {
-    if (item.allowedRoles && user?.role && !item.allowedRoles.includes(user.role)) {
-      return false
-    }
-    return hasPermission(item.permission.resource, item.permission.action)
-  })
-
-  const filteredAdminNavigation = adminNavigation.filter(item =>
+  const filteredNavigation = navigation.filter(item => 
     hasPermission(item.permission.resource, item.permission.action)
   )
 
@@ -142,12 +141,13 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const getRoleBadge = (role?: string) => {
     switch(role) {
+      case 'DLMO':
       case 'SUPERIOR':
-        return { label: 'Superior Officer', color: 'bg-purple-100 text-purple-800 border-purple-200' }
+        return { label: 'District Legal Metrology Officer', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' }
       case 'MANUFACTURER':
-        return { label: 'Manufacturer Portal', color: 'bg-amber-100 text-amber-800 border-amber-200' }
+        return { label: 'Manufacturer / Packer', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' }
       case 'ADMIN':
-        return { label: 'System Admin', color: 'bg-red-100 text-red-800 border-red-200' }
+        return { label: 'System Administrator', color: 'bg-red-100 text-red-800 border-red-200' }
       default:
         return { label: 'Field Inspector', color: 'bg-blue-100 text-blue-800 border-blue-200' }
     }
@@ -233,34 +233,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </Link>
               )
             })}
-            
-            {filteredAdminNavigation.length > 0 && (
-              <>
-                <div className="pt-4 pb-2">
-                  <p className="px-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    System Administration
-                  </p>
-                </div>
-                {filteredAdminNavigation.map((item) => {
-                  const isActive = location.pathname === item.href
-                  return (
-                    <Link
-                      key={item.name}
-                      to={item.href}
-                      className={`flex items-center px-3.5 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                        isActive
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                      onClick={() => setSidebarOpen(false)}
-                    >
-                      <item.icon className={`mr-3 h-4 w-4 ${isActive ? 'text-white' : 'text-gray-500'}`} />
-                      {item.name}
-                    </Link>
-                  )
-                })}
-              </>
-            )}
           </nav>
 
           {/* Logout */}

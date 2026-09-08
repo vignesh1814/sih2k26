@@ -6,8 +6,7 @@ import { inMemoryStore, isDbConnected } from '../db.js';
 
 const router = Router();
 
-// Superior Officer Aggregate Analytics (Inspectors + Manufacturers + Challans)
-router.get('/analytics/superior', async (req, res) => {
+const handleDlmoAnalytics = async (req, res) => {
   try {
     let scans = [];
     let challans = [];
@@ -138,12 +137,16 @@ router.get('/analytics/superior', async (req, res) => {
       recent_audit_stream: auditLogs.slice(0, 10)
     });
   } catch (err) {
-    console.error('[Superior Analytics Error]', err);
-    return res.status(500).json({ message: 'Failed to generate superior analytics' });
+    console.error('[DLMO Analytics Error]', err);
+    return res.status(500).json({ message: 'Failed to generate supervisory analytics' });
   }
-});
+};
 
-// Manufacturer Dashboard (Specific brand overview)
+// District Legal Metrology Officer (DLMO) / Superior Officer Aggregate Analytics
+router.get('/analytics/dlmo', handleDlmoAnalytics);
+router.get('/analytics/superior', handleDlmoAnalytics);
+
+// Manufacturer Dashboard (Scoped to specific brand)
 router.get('/manufacturer/dashboard', async (req, res) => {
   try {
     const brandName = req.query.brand || 'Sunrise Foods & FMCG Ltd';
@@ -164,12 +167,20 @@ router.get('/manufacturer/dashboard', async (req, res) => {
 
     const totalPenalties = brandChallans.reduce((acc, c) => acc + (c.penalty_amount || 0), 0);
     const pendingChallans = brandChallans.filter(c => c.status === 'ISSUED' || c.status === 'ACKNOWLEDGED');
+    const passedScans = brandScans.filter(s => s.status === 'PASS' || s.status === 'SETTLED').length;
+    const totalCount = brandScans.length;
+    const compliancePct = totalCount > 0 ? Math.round((passedScans / totalCount) * 100) : 85;
+
+    let grade = 'Grade A (High Compliance)';
+    if (compliancePct < 60) grade = 'Grade D (Critical Deficiencies)';
+    else if (compliancePct < 75) grade = 'Grade C (Requires Immediate Rectification)';
+    else if (compliancePct < 90) grade = 'Grade B (Minor Deficiencies)';
 
     return res.json({
       brand_name: brandName,
-      compliance_grade: 'Grade B (Requires Rectification)',
-      total_inspections_conducted: brandScans.length + 28,
-      compliance_rate: '68.0%',
+      compliance_grade: grade,
+      total_inspections_conducted: totalCount > 0 ? totalCount : 28,
+      compliance_rate: `${compliancePct}%`,
       active_challans_count: pendingChallans.length,
       total_penalties_assessed: totalPenalties,
       challans: brandChallans,

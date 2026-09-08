@@ -5,8 +5,8 @@ const ChallanSchema = new mongoose.Schema({
   scan_id: { type: String, default: null },
   manufacturer_name: { type: String, required: true, index: true },
   product_name: { type: String, required: true },
-  issued_by: { type: String, default: 'Dr. R. K. Verma, Controller of Legal Metrology' },
-  issued_by_role: { type: String, default: 'SUPERIOR' },
+  issued_by: { type: String, default: 'District Legal Metrology Officer' },
+  issued_by_role: { type: String, default: 'DLMO' },
   inspector_name: { type: String, default: 'Field Inspector' },
   violation_codes: [{ type: String }],
   act_sections: [{ type: String }],
@@ -22,7 +22,11 @@ const ChallanSchema = new mongoose.Schema({
   issued_at: { type: Date, default: Date.now, index: true },
   manufacturer_response: { type: String, default: null },
   rectification_proof_url: { type: String, default: null },
+  payment_mode: { type: String, default: null },
+  transaction_id: { type: String, default: null },
+  paid_at: { type: Date, default: null },
   notes: { type: String, default: '' }
 });
 
 export const Challan = mongoose.model('Challan', ChallanSchema);
+export default Challan;

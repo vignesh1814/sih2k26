@@ -5,15 +5,20 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { Scan } from '../models/Scan.js';
+import { InspectionSession } from '../models/InspectionSession.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { inMemoryStore, isDbConnected } from '../db.js';
 import { OCRService } from '../services/ocrService.js';
 import { ExtractionService } from '../services/extractionService.js';
 import { ComplianceService } from '../services/complianceService.js';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = Router();
 
-const uploadsDir = path.join(process.cwd(), 'server', 'uploads');
+const uploadsDir = path.resolve(__dirname, '..', '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -32,10 +37,16 @@ const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } });
 router.get('/scans', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
-    const { exclude_settled } = req.query;
+    const { exclude_settled, manufacturer, session_id } = req.query;
     let query = {};
     if (exclude_settled === 'true') {
       query.status = { $ne: 'SETTLED' };
+    }
+    if (session_id) {
+      query.session_id = session_id;
+    }
+    if (manufacturer) {
+      query['declarations.manufacturer'] = new RegExp(manufacturer, 'i');
     }
 
     if (isDbConnected()) {
@@ -46,6 +57,12 @@ router.get('/scans', async (req, res) => {
     if (exclude_settled === 'true') {
       scans = scans.filter(s => s.status !== 'SETTLED' && !s.is_settled);
     }
+    if (session_id) {
+      scans = scans.filter(s => s.session_id === session_id);
+    }
+    if (manufacturer) {
+      scans = scans.filter(s => (s.declarations?.manufacturer || '').toLowerCase().includes(manufacturer.toLowerCase()));
+    }
     scans = scans.slice(0, limit);
     return res.json({ scans, count: scans.length });
   } catch (err) {
@@ -54,7 +71,110 @@ router.get('/scans', async (req, res) => {
   }
 });
 
-// Single Package Label Scan (Supports both image upload & raw text input)
+// Get single scan
+router.get('/scans/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    let scan = null;
+    if (isDbConnected()) {
+      scan = await Scan.findOne({ scan_id: id }).lean();
+    }
+    if (!scan) {
+      scan = (inMemoryStore.scans || []).find(s => s.scan_id === id);
+    }
+    if (!scan) {
+      return res.status(404).json({ message: 'Scan not found' });
+    }
+    return res.json(scan);
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+// Record human verification decisions (UC-INS-06)
+router.put('/scans/:id/verify', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decisions, inspector_notes, verified_by } = req.body;
+
+    let scan = null;
+    if (isDbConnected()) {
+      scan = await Scan.findOne({ scan_id: id });
+    } else {
+      scan = (inMemoryStore.scans || []).find(s => s.scan_id === id);
+    }
+
+    if (!scan) {
+      return res.status(404).json({ message: 'Scan record not found' });
+    }
+
+    // Apply verification decisions
+    if (Array.isArray(decisions)) {
+      scan.verification_decisions = decisions.map(d => ({
+        rule_code: d.rule_code,
+        decision: d.decision,
+        officer_notes: d.officer_notes || '',
+        verified_by: verified_by || 'Field Inspector',
+        timestamp: new Date()
+      }));
+
+      // Update human_decision in violations
+      if (Array.isArray(scan.violations)) {
+        scan.violations.forEach(v => {
+          const match = decisions.find(d => d.rule_code === v.rule_code);
+          if (match) {
+            v.human_decision = match.decision;
+          }
+        });
+      }
+    }
+
+    if (inspector_notes !== undefined) {
+      scan.inspector_notes = inspector_notes;
+    }
+
+    // Recompute overall status based on human decisions
+    const confirmedViolations = scan.violations.filter(v => v.human_decision === 'CONFIRMED' || (!v.human_decision && v.severity === 'CRITICAL'));
+    const reviewViolations = scan.violations.filter(v => v.human_decision === 'NEEDS_REVIEW');
+    
+    if (confirmedViolations.length > 0) {
+      scan.status = 'FAIL';
+    } else if (reviewViolations.length > 0) {
+      scan.status = 'NEEDS_REVIEW';
+    } else if (scan.violations.length > 0 && scan.violations.every(v => v.human_decision === 'REJECTED')) {
+      scan.status = 'PASS';
+    }
+
+    if (isDbConnected()) {
+      await scan.save();
+    }
+
+    // Audit log
+    const auditEntry = {
+      timestamp: new Date(),
+      user_name: verified_by || 'Field Inspector',
+      user_role: 'INSPECTOR',
+      action: 'VERIFY_FINDINGS',
+      resource: `SCAN:${id.slice(0, 8)}`,
+      details: `Officer recorded human verification decisions for ${decisions ? decisions.length : 0} findings. Status: ${scan.status}`,
+      status: 'SUCCESS',
+      ip_address: req.ip || '127.0.0.1'
+    };
+
+    if (isDbConnected()) {
+      try { await AuditLog.create(auditEntry); } catch (e) {}
+    } else {
+      inMemoryStore.auditLogs.unshift(auditEntry);
+    }
+
+    return res.json({ success: true, message: 'Human verification decisions recorded successfully', scan });
+  } catch (err) {
+    console.error('[Verify findings error]', err);
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+// Single Package Label Scan
 router.post('/scan', upload.single('file'), async (req, res) => {
   try {
     let filePath = null;
@@ -62,6 +182,8 @@ router.post('/scan', upload.single('file'), async (req, res) => {
     let avg_conf = 0.95;
     let evidenceHash = '';
     const scanId = uuidv4();
+    const sessionId = req.body?.session_id || req.query?.session_id || null;
+    const isSelfCheck = req.body?.is_manufacturer_self_check === 'true' || req.query?.mode === 'self-check';
 
     if (req.file) {
       filePath = req.file.path;
@@ -94,6 +216,7 @@ router.post('/scan', upload.single('file'), async (req, res) => {
     if (!detections || detections.length === 0) {
       const emptyScan = {
         scan_id: scanId,
+        session_id: sessionId,
         status: 'INSUFFICIENT_EVIDENCE',
         overall_confidence: 0.0,
         image_quality: imageQuality,
@@ -101,6 +224,7 @@ router.post('/scan', upload.single('file'), async (req, res) => {
         violations: [],
         detections: [],
         evidence_hash: evidenceHash,
+        is_manufacturer_self_check: isSelfCheck,
         message: 'No legible text detected on package surface.'
       };
       return res.json(emptyScan);
@@ -114,14 +238,17 @@ router.post('/scan', upload.single('file'), async (req, res) => {
 
     const scanRecord = {
       scan_id: scanId,
+      session_id: sessionId,
       status: (!declarations.manufacturer && !declarations.mrp) ? 'INSUFFICIENT_EVIDENCE' : status,
       overall_confidence: avg_conf || 0.95,
       image_quality: imageQuality,
       declarations,
-      violations,
+      violations: violations.map(v => ({ ...v, human_decision: 'PENDING' })),
+      verification_decisions: [],
       detections,
       evidence_hash: evidenceHash,
       image_url: filePath ? `/uploads/${path.basename(filePath)}` : null,
+      is_manufacturer_self_check: isSelfCheck,
       message: 'Scan processed successfully.',
       created_at: new Date()
     };
@@ -130,6 +257,20 @@ router.post('/scan', upload.single('file'), async (req, res) => {
     if (isDbConnected()) {
       try {
         await Scan.create(scanRecord);
+        if (sessionId) {
+          await InspectionSession.findOneAndUpdate(
+            { session_id: sessionId },
+            { 
+              $inc: { 
+                packages_inspected: 1,
+                compliant_count: scanRecord.status === 'PASS' ? 1 : 0,
+                non_compliant_count: scanRecord.status === 'FAIL' ? 1 : 0,
+                review_required_count: scanRecord.status === 'NEEDS_REVIEW' ? 1 : 0,
+                violations_detected: violations.length
+              }
+            }
+          );
+        }
       } catch (dbErr) {
         console.warn(`[MongoDB] Scan save error: ${dbErr.message}`);
         inMemoryStore.scans.unshift(scanRecord);
@@ -141,11 +282,11 @@ router.post('/scan', upload.single('file'), async (req, res) => {
     // Save Audit Log
     const auditDoc = {
       timestamp: new Date(),
-      user_name: 'Field Inspector',
-      user_role: 'INSPECTOR',
-      action: 'SCAN_AUDIT',
+      user_name: isSelfCheck ? 'Manufacturer Desk' : 'Field Inspector',
+      user_role: isSelfCheck ? 'MANUFACTURER' : 'INSPECTOR',
+      action: isSelfCheck ? 'SELF_CHECK_SCAN' : 'SCAN_AUDIT',
       resource: `SCAN:${scanId.slice(0, 8)}`,
-      details: `Label audit completed with status ${scanRecord.status} (${violations.length} violations detected)`,
+      details: `${isSelfCheck ? 'Manufacturer self-check' : 'Official field scan'} completed: ${scanRecord.status} (${violations.length} findings)`,
       status: 'SUCCESS',
       ip_address: req.ip || '127.0.0.1'
     };
@@ -172,6 +313,9 @@ router.post('/scan-multi', upload.array('files'), async (req, res) => {
     }
 
     const scanId = uuidv4();
+    const sessionId = req.body?.session_id || req.query?.session_id || null;
+    const isSelfCheck = req.body?.is_manufacturer_self_check === 'true' || req.query?.mode === 'self-check';
+
     let allDetections = [];
     let confidences = [];
     let combinedBuffer = Buffer.alloc(0);
@@ -194,6 +338,7 @@ router.post('/scan-multi', upload.array('files'), async (req, res) => {
 
     const scanRecord = {
       scan_id: scanId,
+      session_id: sessionId,
       status,
       overall_confidence: Math.round(avgOverallConf * 100) / 100,
       image_quality: {
@@ -204,15 +349,33 @@ router.post('/scan-multi', upload.array('files'), async (req, res) => {
         recommended_action: 'Multi-panel fusion complete'
       },
       declarations,
-      violations,
+      violations: violations.map(v => ({ ...v, human_decision: 'PENDING' })),
+      verification_decisions: [],
       detections: allDetections,
       evidence_hash: evidenceHash,
+      is_manufacturer_self_check: isSelfCheck,
       message: `Multi-panel scan synthesized across ${files.length} surfaces.`,
       created_at: new Date()
     };
 
     if (isDbConnected()) {
-      try { await Scan.create(scanRecord); } catch (e) {}
+      try {
+        await Scan.create(scanRecord);
+        if (sessionId) {
+          await InspectionSession.findOneAndUpdate(
+            { session_id: sessionId },
+            { 
+              $inc: { 
+                packages_inspected: 1,
+                compliant_count: scanRecord.status === 'PASS' ? 1 : 0,
+                non_compliant_count: scanRecord.status === 'FAIL' ? 1 : 0,
+                review_required_count: scanRecord.status === 'NEEDS_REVIEW' ? 1 : 0,
+                violations_detected: violations.length
+              }
+            }
+          );
+        }
+      } catch (e) {}
     } else {
       inMemoryStore.scans.unshift(scanRecord);
     }

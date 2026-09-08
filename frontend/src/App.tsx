@@ -9,20 +9,16 @@ import Dashboard from './pages/Dashboard'
 import Scan from './pages/Scan'
 import Reports from './pages/Reports'
 import AuditTrail from './pages/AuditTrail'
-import AdminPanel from './pages/AdminPanel'
 import SuperiorAnalytics from './pages/SuperiorAnalytics'
 import ManufacturerPortal from './pages/ManufacturerPortal'
 import Documentation from './pages/Documentation'
-import EntityIdentification from './pages/EntityIdentification'
 import QuantityVerification from './pages/QuantityVerification'
-import EntityHistory from './pages/EntityHistory'
-import SeizureEvidence from './pages/SeizureEvidence'
 import OfflineSync from './pages/OfflineSync'
 import ProtectedRoute from './components/ProtectedRoute'
 
 const RoleDefaultRedirect: React.FC = () => {
   const { user } = useAuth()
-  if (user?.role === 'SUPERIOR') {
+  if (user?.role === 'DLMO' || user?.role === 'SUPERIOR') {
     return <Navigate to="/superior-analytics" replace />
   }
   if (user?.role === 'MANUFACTURER') {
@@ -47,17 +43,14 @@ function App() {
                     <Routes>
                       <Route path="/" element={<RoleDefaultRedirect />} />
                       <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/entities" element={<EntityIdentification />} />
                       <Route path="/scan" element={<Scan />} />
                       <Route path="/quantity" element={<QuantityVerification />} />
                       <Route path="/reports" element={<Reports />} />
-                      <Route path="/history" element={<EntityHistory />} />
-                      <Route path="/seizures" element={<SeizureEvidence />} />
                       <Route path="/sync" element={<OfflineSync />} />
                       <Route 
                         path="/superior-analytics" 
                         element={
-                          <ProtectedRoute requiredRoles={['SUPERIOR', 'ADMIN']}>
+                          <ProtectedRoute requiredRoles={['DLMO', 'SUPERIOR', 'ADMIN']}>
                             <SuperiorAnalytics />
                           </ProtectedRoute>
                         } 
@@ -65,21 +58,20 @@ function App() {
                       <Route 
                         path="/manufacturer-portal" 
                         element={
-                          <ProtectedRoute requiredRoles={['MANUFACTURER', 'SUPERIOR', 'ADMIN']}>
+                          <ProtectedRoute requiredRoles={['MANUFACTURER', 'DLMO', 'SUPERIOR', 'ADMIN']}>
                             <ManufacturerPortal />
                           </ProtectedRoute>
                         } 
                       />
                       <Route path="/audit-trail" element={<AuditTrail />} />
-                      <Route 
-                        path="/admin" 
-                        element={
-                          <ProtectedRoute requiredRoles={['ADMIN']}>
-                            <AdminPanel />
-                          </ProtectedRoute>
-                        } 
-                      />
                       <Route path="/documentation" element={<Documentation />} />
+                      
+                      {/* Backward compatibility redirects */}
+                      <Route path="/entities" element={<Navigate to="/scan" replace />} />
+                      <Route path="/seizures" element={<Navigate to="/reports" replace />} />
+                      <Route path="/history" element={<Navigate to="/reports" replace />} />
+                      <Route path="/admin" element={<Navigate to="/superior-analytics" replace />} />
+                      <Route path="*" element={<RoleDefaultRedirect />} />
                     </Routes>
                   </Layout>
                 </ProtectedRoute>

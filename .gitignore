@@ -70,11 +70,13 @@ yarn-debug.log*
 yarn-error.log*
 
 # Application Uploads & Temp
-backend/uploads/
 backend/uploads/*
 !backend/uploads/.gitkeep
-server/uploads/
 server/uploads/*
+!server/uploads/.gitkeep
+server/reports/*
+!server/reports/.gitkeep
+server/server/
 scratch/
 debug_scan.png
 

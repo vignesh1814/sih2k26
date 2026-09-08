@@ -265,6 +265,15 @@ const api = axios.create({
   timeout: 120000,
 })
 
+// Attach Bearer token from localStorage automatically
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('lm_token')
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 export const scanPackage = async (file: File): Promise<ScanResponse> => {
   const formData = new FormData()
   formData.append('file', file)
@@ -502,3 +511,25 @@ export const updateSeizureStatus = async (seizureId: string, status: string, not
   const response = await api.put(`/enforcement/seizures/${seizureId}/status`, { status, notes })
   return response.data
 }
+
+// Record human verification decisions on findings (UC-INS-06)
+export const recordVerificationDecisions = async (
+  scanId: string,
+  decisions: Array<{ rule_code: string; decision: string; officer_notes?: string }>,
+  inspectorNotes?: string,
+  verifiedBy?: string
+): Promise<{ success: boolean; scan: ScanResponse }> => {
+  const response = await api.put(`/scans/${scanId}/verify`, {
+    decisions,
+    inspector_notes: inspectorNotes,
+    verified_by: verifiedBy
+  })
+  return response.data
+}
+
+// Synchronize offline inspection queue to central backend (UC-SYS-04)
+export const syncOfflineQueue = async (items: any[]): Promise<{ success: boolean; message: string; synced_count: number }> => {
+  const response = await api.post('/sync', { items })
+  return response.data
+}
+

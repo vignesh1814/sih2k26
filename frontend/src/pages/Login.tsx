@@ -23,34 +23,34 @@ const Login: React.FC = () => {
       await login(email, password)
       toast.success('Login successful')
 
-      // Role-based target navigation if not returning from a protected route
+      // Role-based target navigation based on authenticated role
+      const storedUser = localStorage.getItem('lm_user')
+      const parsedUser = storedUser ? JSON.parse(storedUser) : null
+      const userRole = parsedUser?.role
+
       const from = (location.state as any)?.from?.pathname
       if (from && from !== '/login') {
         navigate(from, { replace: true })
+      } else if (userRole === 'DLMO' || userRole === 'SUPERIOR') {
+        navigate('/superior-analytics', { replace: true })
+      } else if (userRole === 'MANUFACTURER') {
+        navigate('/manufacturer-portal', { replace: true })
       } else {
-        const lowerEmail = email.toLowerCase()
-        if (lowerEmail.includes('superior')) {
-          navigate('/superior-analytics', { replace: true })
-        } else if (lowerEmail.includes('manufacturer') || lowerEmail.includes('brand')) {
-          navigate('/manufacturer-portal', { replace: true })
-        } else {
-          navigate('/dashboard', { replace: true })
-        }
+        navigate('/dashboard', { replace: true })
       }
-    } catch (err) {
-      setError('Invalid credentials. Please select a demo account or verify password.')
+    } catch (err: any) {
+      setError(err?.message || 'Invalid credentials. Please verify your email and password.')
       toast.error('Login failed')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const fillDemoCredentials = (role: 'inspector' | 'superior' | 'manufacturer' | 'admin') => {
+  const fillDemoCredentials = (role: 'inspector' | 'dlmo' | 'manufacturer') => {
     const credentials = {
       inspector: { email: 'inspector@lm.gov.in', password: 'inspector123' },
-      superior: { email: 'superior@lm.gov.in', password: 'superior123' },
-      manufacturer: { email: 'manufacturer@brand.com', password: 'brand123' },
-      admin: { email: 'admin@lm.gov.in', password: 'admin123' }
+      dlmo: { email: 'dlmo@lm.gov.in', password: 'dlmo123' },
+      manufacturer: { email: 'manufacturer@brand.com', password: 'brand123' }
     }
     
     if (credentials[role]) {
@@ -137,10 +137,10 @@ const Login: React.FC = () => {
             </button>
           </form>
 
-          {/* 3 Main Role Portals (Quick Select) */}
+          {/* 3 Primary Actors per SRS */}
           <div className="mt-6 pt-5 border-t border-gray-200">
             <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
-              One-Click Role Portals:
+              SRS Three-Actor Quick Login:
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               {/* 1. Field Inspector */}
@@ -157,24 +157,24 @@ const Login: React.FC = () => {
                   <UserCheck className="h-4 w-4 text-blue-600" />
                   <span className="text-xs font-bold text-gray-900">1. Inspector</span>
                 </div>
-                <p className="text-[11px] text-gray-500 leading-tight">Package scanning, OCR check & audit reports</p>
+                <p className="text-[11px] text-gray-500 leading-tight">Package scanning, OCR check, MPE & reports</p>
               </button>
 
-              {/* 2. Superior Officer */}
+              {/* 2. DLMO */}
               <button
                 type="button"
-                onClick={() => fillDemoCredentials('superior')}
+                onClick={() => fillDemoCredentials('dlmo')}
                 className={`p-3 text-left border rounded-xl transition-all ${
-                  email === 'superior@lm.gov.in'
+                  email === 'dlmo@lm.gov.in' || email === 'superior@lm.gov.in'
                     ? 'border-indigo-600 bg-indigo-50/80 ring-2 ring-indigo-600'
                     : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-center space-x-2 mb-1">
                   <ShieldAlert className="h-4 w-4 text-indigo-600" />
-                  <span className="text-xs font-bold text-gray-900">2. Superior</span>
+                  <span className="text-xs font-bold text-gray-900">2. DLMO</span>
                 </div>
-                <p className="text-[11px] text-gray-500 leading-tight">All inspector analytics & legal challan issuance</p>
+                <p className="text-[11px] text-gray-500 leading-tight">District supervisory review & legal challans</p>
               </button>
 
               {/* 3. Manufacturer Portal */}
@@ -191,7 +191,7 @@ const Login: React.FC = () => {
                   <Building2 className="h-4 w-4 text-emerald-600" />
                   <span className="text-xs font-bold text-gray-900">3. Manufacturer</span>
                 </div>
-                <p className="text-[11px] text-gray-500 leading-tight">View challans, inspection reports & submit replies</p>
+                <p className="text-[11px] text-gray-500 leading-tight">Pre-market self check & brand compliance</p>
               </button>
             </div>
           </div>

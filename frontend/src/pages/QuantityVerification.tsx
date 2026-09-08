@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import { Scale, CheckCircle2, XCircle, AlertTriangle, FileText, ArrowRight, Shield, RefreshCw } from 'lucide-react'
+import { Scale, CheckCircle2, XCircle, AlertTriangle, RefreshCw, ArrowLeft } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { recordQuantityMeasurement, fetchMeasurements, QuantityMeasurement } from '../services/api'
+import toast from 'react-hot-toast'
 
 const QuantityVerification: React.FC = () => {
-  const [productName, setProductName] = useState('Wheat Flour / Atta Pack')
-  const [declaredQty, setDeclaredQty] = useState('1000')
+  const [productName, setProductName] = useState('')
+  const [declaredQty, setDeclaredQty] = useState('')
   const [declaredUnit, setDeclaredUnit] = useState('g')
-  const [actualQty, setActualQty] = useState('980')
+  const [actualQty, setActualQty] = useState('')
   const [sampleNo, setSampleNo] = useState('SMPL-01')
   const [instrumentType, setInstrumentType] = useState('Electronic Precision Balance (Class II, Verified d=0.1g)')
   const [instrumentCert, setInstrumentCert] = useState('LM/VER/2026/7821')
@@ -15,6 +17,32 @@ const QuantityVerification: React.FC = () => {
   const [measurements, setMeasurements] = useState<QuantityMeasurement[]>([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Ingest declared quantity from the active scan if available
+  useEffect(() => {
+    const rawScanned = sessionStorage.getItem('sih26034_last_scanned_commodity')
+    if (rawScanned) {
+      try {
+        const parsed = JSON.parse(rawScanned)
+        if (parsed.generic_name) setProductName(parsed.generic_name)
+        if (parsed.net_quantity) {
+          const num = parseFloat(parsed.net_quantity)
+          if (!isNaN(num) && num > 0) {
+            setDeclaredQty(String(num))
+            // Suggest a realistic test measured weight
+            setActualQty(String(num))
+          }
+        }
+        if (parsed.unit) setDeclaredUnit(parsed.unit)
+        toast.success(`Loaded "${parsed.generic_name}" from recent scan`, { id: 'prefill-scan' })
+      } catch (e) {}
+    } else {
+      // Clean fallback defaults
+      setProductName('Inspected Package')
+      setDeclaredQty('500')
+      setActualQty('495')
+    }
+  }, [])
 
   const loadRecentMeasurements = async () => {
     setLoading(true)
@@ -34,10 +62,10 @@ const QuantityVerification: React.FC = () => {
     loadRecentMeasurements()
   }, [])
 
-  // Dynamic live calculation preview
+  // Dynamic calculation preview
   const declaredNum = parseFloat(declaredQty) || 0
   const actualNum = parseFloat(actualQty) || 0
-  const diff = actualNum - declaredNum
+  const diff = Math.round((actualNum - declaredNum) * 100) / 100
 
   // Schedule 2 MPE calculator preview
   const getMpePreview = (qty: number, unit: string) => {
@@ -79,10 +107,11 @@ const QuantityVerification: React.FC = () => {
 
       if (res.success && res.data) {
         setCurrentResult(res.data)
+        toast.success('Quantity measurement verified & saved to database!')
         loadRecentMeasurements()
       }
-    } catch (err) {
-      console.error('Failed to record measurement:', err)
+    } catch (err: any) {
+      toast.error('Failed to record measurement')
     } finally {
       setSubmitting(false)
     }
@@ -95,25 +124,25 @@ const QuantityVerification: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <span className="px-3 py-1 bg-blue-700/60 text-blue-200 text-xs font-bold rounded-full uppercase tracking-wider border border-blue-500/30">
-              Module 3: Physical Quantity Verification
+              Statutory Quantity Verification
             </span>
             <span className="px-3 py-1 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded-full border border-amber-500/30">
               Rule 12 & Second Schedule MPE
             </span>
           </div>
-          <h1 className="text-2xl font-black mt-2 text-white">Physical Net Quantity & Tare Verification</h1>
+          <h1 className="text-2xl font-black mt-2 text-white">Net Quantity & Tare Weight Verification</h1>
           <p className="text-sm text-blue-200 mt-1 max-w-2xl">
             Compare declared net quantity against actual physical measurement using standard calibrated weighing instruments under the statutory Maximum Permissible Error (MPE) table.
           </p>
         </div>
 
-        <div className="p-3 bg-white/10 rounded-xl border border-white/20 backdrop-blur-sm text-xs space-y-1">
-          <p className="font-bold text-white flex items-center space-x-1.5">
-            <Scale className="h-4 w-4 text-cyan-300" />
-            <span>Statutory Tolerance Standard</span>
-          </p>
-          <p className="text-blue-200">Packaged Commodities Second Schedule</p>
-        </div>
+        <Link
+          to="/scan"
+          className="inline-flex items-center space-x-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition-all self-start md:self-auto"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back to Label Scan</span>
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -121,7 +150,7 @@ const QuantityVerification: React.FC = () => {
         <div className="lg:col-span-7 bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-5">
           <h2 className="text-lg font-bold text-gray-900 flex items-center space-x-2">
             <Scale className="h-5 w-5 text-blue-600" />
-            <span>Record Physical Sample Measurement</span>
+            <span>Record Sample Net Quantity Measurement</span>
           </h2>
 
           <form onSubmit={handleRecordMeasurement} className="space-y-4">
@@ -143,6 +172,7 @@ const QuantityVerification: React.FC = () => {
                   type="text"
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
+                  placeholder="e.g. Tata Iodized Salt"
                   className="w-full px-3.5 py-2 bg-gray-50 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
                   required
                 />
@@ -151,19 +181,20 @@ const QuantityVerification: React.FC = () => {
 
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Declared Net Quantity on Package</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Declared Quantity on Label</label>
                 <input
                   type="number"
                   step="any"
                   value={declaredQty}
                   onChange={(e) => setDeclaredQty(e.target.value)}
+                  placeholder="e.g. 1000"
                   className="w-full px-3.5 py-2 bg-gray-50 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Unit of Measure</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Declared Unit</label>
                 <select
                   value={declaredUnit}
                   onChange={(e) => setDeclaredUnit(e.target.value)}
@@ -173,20 +204,21 @@ const QuantityVerification: React.FC = () => {
                   <option value="kg">kilograms (kg)</option>
                   <option value="ml">millilitres (ml)</option>
                   <option value="l">litres (l)</option>
-                  <option value="N">count / number (N)</option>
+                  <option value="N">number / count (N)</option>
                 </select>
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                Actual Measured Net Quantity (after Tare Weight deduction)
+                Measured Quantity (after Tare Weight deduction)
               </label>
               <input
                 type="number"
                 step="any"
                 value={actualQty}
                 onChange={(e) => setActualQty(e.target.value)}
+                placeholder="e.g. 992"
                 className="w-full px-3.5 py-2 bg-gray-50 border border-gray-300 rounded-xl text-sm font-bold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
                 required
               />
@@ -207,7 +239,7 @@ const QuantityVerification: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Verification Stamp / Cert No.</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Verification Certificate No.</label>
                 <input
                   type="text"
                   value={instrumentCert}
@@ -228,19 +260,19 @@ const QuantityVerification: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-2 text-center text-xs mt-2">
                 <div className="bg-white/80 p-2 rounded-lg">
-                  <span className="text-gray-500 block">Difference (Δ)</span>
+                  <span className="text-gray-500 block">Deviation</span>
                   <span className={`font-black text-sm ${diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                     {diff > 0 ? `+${diff}` : diff} {declaredUnit}
                   </span>
                 </div>
                 <div className="bg-white/80 p-2 rounded-lg">
-                  <span className="text-gray-500 block">Max Permissible Error</span>
+                  <span className="text-gray-500 block">Maximum Permissible Error</span>
                   <span className="font-bold text-gray-800 text-sm">±{mpeLimit.toFixed(1)} g</span>
                 </div>
                 <div className="bg-white/80 p-2 rounded-lg">
-                  <span className="text-gray-500 block">Statutory Verdict</span>
-                  <span className={`font-bold text-sm ${isDeficitExceeded ? 'text-red-700' : 'text-emerald-700'}`}>
-                    {isDeficitExceeded ? 'Excess Deficiency' : 'Within Tolerance'}
+                  <span className="text-gray-500 block">Statutory Status</span>
+                  <span className={`font-bold text-xs ${isDeficitExceeded ? 'text-red-700' : 'text-emerald-700'}`}>
+                    {isDeficitExceeded ? 'Deficiency Exceeds MPE' : 'Within Tolerance'}
                   </span>
                 </div>
               </div>
@@ -249,74 +281,75 @@ const QuantityVerification: React.FC = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center space-x-2"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
             >
-              <CheckCircle2 className="h-5 w-5" />
-              <span>{submitting ? 'Recording...' : 'Save Physical Measurement Record'}</span>
+              {submitting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Recording Measurement in Database...</span>
+                </>
+              ) : (
+                <>
+                  <Scale className="h-4 w-4" />
+                  <span>Save Official Quantity Verification Record</span>
+                </>
+              )}
             </button>
           </form>
         </div>
 
-        {/* Schedule Reference & Recent Logs */}
+        {/* Right Column: Measurement Log */}
         <div className="lg:col-span-5 space-y-4">
-          {/* Statutory Schedule Reference Card */}
-          <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-5 rounded-2xl shadow-sm space-y-3">
-            <h3 className="font-bold text-sm flex items-center space-x-2 text-indigo-200">
-              <Shield className="h-4 w-4 text-indigo-400" />
-              <span>Second Schedule MPE Reference (Rule 12)</span>
-            </h3>
-            <div className="text-xs space-y-1.5 text-indigo-100/90 divide-y divide-indigo-800/60">
-              <div className="flex justify-between py-1"><span>Up to 50 g</span><span className="font-bold">9%</span></div>
-              <div className="flex justify-between py-1"><span>50 to 100 g</span><span className="font-bold">4.5 g</span></div>
-              <div className="flex justify-between py-1"><span>100 to 200 g</span><span className="font-bold">4.5%</span></div>
-              <div className="flex justify-between py-1"><span>200 to 300 g</span><span className="font-bold">9.0 g</span></div>
-              <div className="flex justify-between py-1"><span>300 to 500 g</span><span className="font-bold">3%</span></div>
-              <div className="flex justify-between py-1"><span>500 g to 1 kg</span><span className="font-bold">15.0 g</span></div>
-              <div className="flex justify-between py-1"><span>1 kg to 10 kg</span><span className="font-bold">1.5%</span></div>
-            </div>
-          </div>
-
-          {/* Recent Records Log */}
-          <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-3">
+          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm text-gray-900">Recorded Measurements Log</h3>
-              <button onClick={loadRecentMeasurements} className="text-gray-400 hover:text-blue-600">
+              <h3 className="font-bold text-base text-gray-900 flex items-center space-x-2">
+                <span>Verified Measurement Records</span>
+              </h3>
+              <button
+                onClick={loadRecentMeasurements}
+                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"
+                title="Refresh"
+              >
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
             </div>
 
-            <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-1">
-              {measurements.length === 0 ? (
-                <p className="text-xs text-gray-500 py-4 text-center">No physical measurements recorded yet.</p>
-              ) : (
-                measurements.map((m) => (
-                  <div
-                    key={m.measurement_id}
-                    className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
-                      m.result === 'PASS' ? 'bg-emerald-50/70 border-emerald-200' : 'bg-red-50/70 border-red-200'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-gray-900">{m.sample_no}</span>
-                        <span className="text-gray-600 truncate max-w-[140px]">{m.product_name}</span>
+            {measurements.length === 0 ? (
+              <div className="p-8 text-center text-xs text-gray-400 bg-gray-50 rounded-xl">
+                No physical quantity verification records logged yet.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                {measurements.map((m, idx) => {
+                  const isPass = (m as any).result === 'PASS' || (m as any).is_compliant
+                  return (
+                    <div
+                      key={m.measurement_id || idx}
+                      className={`p-3.5 rounded-xl border transition-all ${
+                        isPass ? 'bg-emerald-50/40 border-emerald-200' : 'bg-red-50/40 border-red-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-xs text-gray-900">{m.product_name}</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                          isPass ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {isPass ? 'PASS' : 'FAIL'}
+                        </span>
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        Declared: {m.declared_quantity}{m.declared_unit} • Actual: {m.actual_quantity}{m.declared_unit} (Δ: {m.difference > 0 ? `+${m.difference}` : m.difference}{m.declared_unit})
+                      <div className="text-[11px] text-gray-600 flex items-center justify-between">
+                        <span>Declared: <strong>{m.declared_quantity}{m.declared_unit}</strong></span>
+                        <span>Measured: <strong>{(m as any).measured_quantity || (m as any).actual_quantity}{m.declared_unit}</strong></span>
+                        <span>MPE: <strong>±{(m as any).mpe_limit || (m as any).permissible_error_limit}g</strong></span>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1 font-mono">
+                        {m.measurement_id} • {new Date((m as any).created_at || Date.now()).toLocaleDateString()}
                       </p>
                     </div>
-
-                    <div className="text-right">
-                      <span className={`px-2 py-0.5 rounded font-black text-[10px] ${
-                        m.result === 'PASS' ? 'bg-emerald-200 text-emerald-900' : 'bg-red-200 text-red-900'
-                      }`}>
-                        {m.result}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

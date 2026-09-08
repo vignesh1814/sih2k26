@@ -5,13 +5,15 @@ const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
   role: { 
     type: String, 
-    enum: ['ADMIN', 'INSPECTOR', 'ANALYST', 'VIEWER'], 
+    enum: ['INSPECTOR', 'DLMO', 'SUPERIOR', 'MANUFACTURER', 'ADMIN', 'ANALYST', 'VIEWER'], 
     default: 'INSPECTOR' 
   },
   department: { type: String, default: 'Legal Metrology Directorate' },
-  jurisdiction: { type: String, default: 'National' },
+  organization: { type: String, default: '' },
+  jurisdiction: { type: String, default: 'District Enforcement Unit' },
   password: { type: String, default: 'password123' },
   created_at: { type: Date, default: Date.now }
 });
 
 export const User = mongoose.model('User', UserSchema);
+export default User;

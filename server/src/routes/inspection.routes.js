@@ -1,5 +1,7 @@
 import express from 'express';
 import InspectionSession from '../models/InspectionSession.js';
+import Measurement from '../models/Measurement.js';
+import { Scan } from '../models/Scan.js';
 import { inMemoryStore, isDbConnected } from '../db.js';
 
 const router = express.Router();
@@ -47,13 +49,13 @@ export const calculateMPE = (declaredQty, unit) => {
   };
 };
 
-// POST /api/inspections/start - Start new inspection session
+// POST /api/inspections/start - Start new inspection session (No external registry needed)
 router.post('/start', async (req, res) => {
   try {
     const {
       inspector_id = 'INSP-LM-2026-001',
-      inspector_name = 'Legal Metrology Field Inspector',
-      jurisdiction_district = 'Hyderabad',
+      inspector_name = 'Field Inspector',
+      jurisdiction_district = 'Hyderabad District',
       jurisdiction_state = 'Telangana',
       inspection_type = 'Routine inspection',
       gps_location = {},
@@ -82,10 +84,10 @@ router.post('/start', async (req, res) => {
         address_resolved: gps_location.address_resolved || `${jurisdiction_district}, ${jurisdiction_state}`
       },
       entity_id: entity_id || null,
-      entity_name: entity_name || 'Unspecified Establishment',
+      entity_name: entity_name || 'Inspected Establishment',
       entity_reg_no: entity_reg_no || null,
-      entity_type: entity_type || 'Manufacturer',
-      premises_address: premises_address || '',
+      entity_type: entity_type || 'Manufacturer / Packer',
+      premises_address: premises_address || 'Premises under inspection',
       packages_inspected: 0,
       compliant_count: 0,
       review_required_count: 0,
@@ -124,7 +126,7 @@ router.get('/', async (req, res) => {
       if (inspector_id) filter.inspector_id = inspector_id;
       if (entity_name) filter.entity_name = { $regex: entity_name, $options: 'i' };
 
-      const sessions = await InspectionSession.find(filter).sort({ started_at: -1 });
+      const sessions = await InspectionSession.find(filter).sort({ started_at: -1 }).lean();
       return res.json({ success: true, count: sessions.length, data: sessions });
     }
 
@@ -140,32 +142,37 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/inspections/:session_id - Get session with attached measurements, scans, and seizures
+// GET /api/inspections/:session_id - Get session with attached measurements and scans
 router.get('/:session_id', async (req, res) => {
   try {
     const { session_id } = req.params;
 
     let session = null;
+    let measurements = [];
+    let scans = [];
+
     if (isDbConnected()) {
-      session = await InspectionSession.findOne({ session_id });
+      session = await InspectionSession.findOne({ session_id }).lean();
+      if (session) {
+        measurements = await Measurement.find({ session_id }).sort({ created_at: -1 }).lean();
+        scans = await Scan.find({ session_id }).sort({ created_at: -1 }).lean();
+      }
     } else {
       session = (inMemoryStore.sessions || []).find(s => s.session_id === session_id);
+      measurements = (inMemoryStore.measurements || []).filter(m => m.session_id === session_id);
+      scans = (inMemoryStore.scans || []).filter(s => s.session_id === session_id);
     }
 
     if (!session) {
       return res.status(404).json({ success: false, message: 'Inspection session not found' });
     }
 
-    // Attach linked scans, measurements, and seizures
-    const measurements = (inMemoryStore.measurements || []).filter(m => m.session_id === session_id);
-    const seizures = (inMemoryStore.seizures || []).filter(s => s.session_id === session_id);
-
     return res.json({
       success: true,
       data: {
         ...session,
         measurements,
-        seizures
+        scans
       }
     });
   } catch (error) {
@@ -174,23 +181,25 @@ router.get('/:session_id', async (req, res) => {
   }
 });
 
-// POST /api/inspections/measurement - Record physical weight/measure verification
+// POST /api/inspections/measurement - Record physical weight/measure verification (Persistent in DB)
 router.post('/measurement', async (req, res) => {
   try {
     const {
       session_id,
+      scan_id = null,
       sample_no = `SMPL-${Math.floor(100 + Math.random() * 900)}`,
       product_name = 'Inspected Commodity Package',
       declared_quantity,
       declared_unit = 'g',
       actual_quantity,
-      instrument_type = 'Electronic Precision Balance (Class II)',
-      instrument_certificate_no = `LM/VER/${new Date().getFullYear()}/${Math.floor(1000 + Math.random() * 9000)}`
+      instrument_type = 'Class II Digital Electronic Precision Balance',
+      instrument_certificate_no = `LM/VER/${new Date().getFullYear()}/${Math.floor(1000 + Math.random() * 9000)}`,
+      officer_name = 'Field Inspector'
     } = req.body;
 
     const declaredVal = parseFloat(declared_quantity) || 0;
     const actualVal = parseFloat(actual_quantity) || 0;
-    const diff = actualVal - declaredVal;
+    const diff = Math.round((actualVal - declaredVal) * 100) / 100;
 
     // Evaluate against MPE Schedule
     const mpe = calculateMPE(declaredVal, declared_unit);
@@ -202,34 +211,53 @@ router.post('/measurement', async (req, res) => {
       diffInGrams = diff * 1000;
     }
 
-    const isNonCompliant = diffInGrams < 0 && Math.abs(diffInGrams) > maxAllowedDeficit;
-    const result = isNonCompliant ? 'FAIL' : 'PASS';
+    const isDeficient = diffInGrams < 0 && Math.abs(diffInGrams) > maxAllowedDeficit;
+    const isCompliant = !isDeficient;
+    const result = isCompliant ? 'PASS' : 'FAIL';
 
-    const reason = isNonCompliant
+    const reason = isDeficient
       ? `Net deficiency of ${Math.abs(diffInGrams).toFixed(1)}g exceeds Maximum Permissible Error (MPE) limit of ${maxAllowedDeficit}g under ${mpe.rule_citation}.`
-      : `Net quantity difference of ${diff > 0 ? '+' : ''}${diff}${declared_unit} is within statutory tolerance (MPE limit: ±${maxAllowedDeficit}g).`;
+      : `Net quantity deviation of ${diff > 0 ? '+' : ''}${diff}${declared_unit} is within statutory tolerance (MPE limit: ±${maxAllowedDeficit}g).`;
 
-    const measurement = {
+    const measurementDoc = {
       measurement_id: `MSR-${Date.now().toString(36).toUpperCase()}`,
-      session_id: session_id || 'GENERAL',
+      session_id: session_id || null,
+      scan_id: scan_id || null,
       sample_no,
       product_name,
       declared_quantity: declaredVal,
       declared_unit,
-      actual_quantity: actualVal,
-      difference: diff,
-      permissible_error_limit: maxAllowedDeficit,
+      measured_quantity: actualVal,
+      mpe_limit: maxAllowedDeficit,
+      deviation: diff,
+      deviation_percentage: declaredVal > 0 ? Math.round((diff / declaredVal) * 10000) / 100 : 0,
+      is_compliant: isCompliant,
       instrument_type,
       instrument_certificate_no,
+      officer_name,
       result,
       reason,
       created_at: new Date()
     };
 
-    inMemoryStore.measurements = inMemoryStore.measurements || [];
-    inMemoryStore.measurements.unshift(measurement);
+    if (isDbConnected()) {
+      try {
+        const saved = await Measurement.create(measurementDoc);
+        if (session_id) {
+          await InspectionSession.findOneAndUpdate(
+            { session_id },
+            { $inc: { physical_measurements_recorded: 1 } }
+          );
+        }
+        return res.status(201).json({ success: true, data: saved });
+      } catch (dbErr) {
+        console.warn('[MongoDB Measurement Save Error]', dbErr.message);
+      }
+    }
 
-    // Increment measurement count in session if session_id provided
+    inMemoryStore.measurements = inMemoryStore.measurements || [];
+    inMemoryStore.measurements.unshift(measurementDoc);
+
     if (session_id) {
       const sess = (inMemoryStore.sessions || []).find(s => s.session_id === session_id);
       if (sess) {
@@ -237,7 +265,7 @@ router.post('/measurement', async (req, res) => {
       }
     }
 
-    return res.status(201).json({ success: true, data: measurement });
+    return res.status(201).json({ success: true, data: measurementDoc });
   } catch (error) {
     console.error('Error recording quantity verification measurement:', error);
     return res.status(500).json({ success: false, error: error.message });
@@ -245,13 +273,23 @@ router.post('/measurement', async (req, res) => {
 });
 
 // GET /api/inspections/measurements/list - List measurements
-router.get('/measurements/list', (req, res) => {
-  const { session_id } = req.query;
-  let measurements = inMemoryStore.measurements || [];
-  if (session_id) {
-    measurements = measurements.filter(m => m.session_id === session_id);
+router.get('/measurements/list', async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    if (isDbConnected()) {
+      const query = session_id ? { session_id } : {};
+      const measurements = await Measurement.find(query).sort({ created_at: -1 }).lean();
+      return res.json({ success: true, count: measurements.length, data: measurements });
+    }
+
+    let measurements = inMemoryStore.measurements || [];
+    if (session_id) {
+      measurements = measurements.filter(m => m.session_id === session_id);
+    }
+    return res.json({ success: true, count: measurements.length, data: measurements });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
-  return res.json({ success: true, count: measurements.length, data: measurements });
 });
 
 export default router;

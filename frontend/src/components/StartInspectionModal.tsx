@@ -1,34 +1,42 @@
 import React, { useState, useEffect } from 'react'
-import { MapPin, Navigation, Calendar, Clock, Shield, CheckCircle, AlertCircle, X } from 'lucide-react'
+import { MapPin, Navigation, Calendar, Clock, Shield, CheckCircle, AlertCircle, X, Building2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { startInspectionSession, Entity, InspectionSession } from '../services/api'
+import { startInspectionSession, InspectionSession } from '../services/api'
+import toast from 'react-hot-toast'
 
 interface StartInspectionModalProps {
   isOpen: boolean
   onClose: () => void
   onSessionStarted: (session: InspectionSession) => void
-  selectedEntity?: Entity | null
+  initialEstablishmentName?: string
 }
 
 const StartInspectionModal: React.FC<StartInspectionModalProps> = ({
   isOpen,
   onClose,
   onSessionStarted,
-  selectedEntity
+  initialEstablishmentName = ''
 }) => {
   const { user } = useAuth()
+  const [establishmentName, setEstablishmentName] = useState(initialEstablishmentName)
+  const [premisesAddress, setPremisesAddress] = useState('')
+  const [establishmentType, setEstablishmentType] = useState('Retail Store / Supermarket')
   const [inspectionType, setInspectionType] = useState<InspectionSession['inspection_type']>('Routine inspection')
+  const [district, setDistrict] = useState(user?.jurisdiction || 'Central Enforcement District')
+  const [state, setState] = useState('Telangana')
   const [location, setLocation] = useState({
     latitude: 17.3850,
     longitude: 78.4867,
     accuracy: 4.8,
-    resolvedAddress: 'Hyderabad Central Zone, Telangana',
+    resolvedAddress: 'District Inspection Hub',
     isGpsLocked: false
   })
-  const [district, setDistrict] = useState(user?.jurisdiction || 'Hyderabad')
-  const [state, setState] = useState('Telangana')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [now, setNow] = useState(new Date())
+
+  useEffect(() => {
+    if (initialEstablishmentName) setEstablishmentName(initialEstablishmentName)
+  }, [initialEstablishmentName])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000)
@@ -43,15 +51,15 @@ const StartInspectionModal: React.FC<StartInspectionModalProps> = ({
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             accuracy: Math.round(pos.coords.accuracy * 10) / 10,
-            resolvedAddress: `${district} Enforcement Circle, ${state} (GPS Verified)`,
+            resolvedAddress: `${district}, ${state} (GPS Tagged)`,
             isGpsLocked: true
           })
         },
         (err) => {
-          console.warn('Geolocation access fallback:', err.message)
+          console.warn('Geolocation fallback:', err.message)
           setLocation(prev => ({
             ...prev,
-            resolvedAddress: `${district} Circle Office, ${state}`,
+            resolvedAddress: `${district}, ${state}`,
             isGpsLocked: false
           }))
         },
@@ -62,12 +70,18 @@ const StartInspectionModal: React.FC<StartInspectionModalProps> = ({
 
   if (!isOpen) return null
 
-  const handleStart = async () => {
+  const handleStart = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!establishmentName.trim()) {
+      toast.error('Please enter the establishment or trader name')
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const res = await startInspectionSession({
         inspector_id: user?.id || 'INSP-LM-2026',
-        inspector_name: user?.name || 'Legal Metrology Officer',
+        inspector_name: user?.name || 'Field Inspector',
         jurisdiction_district: district,
         jurisdiction_state: state,
         inspection_type: inspectionType,
@@ -77,19 +91,21 @@ const StartInspectionModal: React.FC<StartInspectionModalProps> = ({
           accuracy_meters: location.accuracy,
           address_resolved: location.resolvedAddress
         },
-        entity_id: selectedEntity?.entity_id,
-        entity_name: selectedEntity?.firm_name || 'Premises under Inspection',
-        entity_reg_no: selectedEntity?.registration_no,
-        entity_type: selectedEntity?.entity_type || 'Manufacturer & Packer',
-        premises_address: selectedEntity?.establishment_address || location.resolvedAddress
+        entity_name: establishmentName.trim(),
+        entity_type: establishmentType,
+        premises_address: premisesAddress.trim() || location.resolvedAddress
       })
 
       if (res.success && res.data) {
+        toast.success(`Inspection Session ${res.data.session_id} initiated`)
         onSessionStarted(res.data)
         onClose()
+      } else {
+        toast.error('Could not create inspection session')
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to start inspection session:', err)
+      toast.error(err?.response?.data?.error || 'Failed to start inspection session')
     } finally {
       setIsSubmitting(false)
     }
@@ -99,134 +115,128 @@ const StartInspectionModal: React.FC<StartInspectionModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-100">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-5 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-5 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-blue-800/80 rounded-xl border border-blue-700/50">
-              <Shield className="h-6 w-6 text-blue-300" />
+            <div className="p-2 bg-blue-600/80 rounded-xl">
+              <Shield className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Start Field Inspection Session</h2>
-              <p className="text-xs text-blue-200">Legal Metrology Act, 2009 • Section 15 Inspection Memo</p>
+              <h3 className="font-bold text-base text-white">Initiate Section 15 Inspection</h3>
+              <p className="text-xs text-blue-200">Packaged Commodities Statutory Inspection Record</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/10 text-white/80 hover:text-white">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-5">
-          {/* Automatic Metadata Banner */}
-          <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3.5 flex items-center justify-between text-xs">
-            <div className="flex items-center space-x-2 text-blue-950 font-medium">
-              <Calendar className="h-4 w-4 text-blue-700" />
-              <span>{now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-            </div>
-            <div className="flex items-center space-x-2 text-blue-950 font-medium">
-              <Clock className="h-4 w-4 text-blue-700" />
-              <span>{now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-            </div>
-            <div className="flex items-center space-x-1.5 bg-blue-200/70 px-2.5 py-1 rounded-full text-blue-900 font-semibold">
-              <Navigation className="h-3.5 w-3.5 text-blue-800" />
-              <span>{location.isGpsLocked ? 'GPS Locked' : 'Auto Geo'}</span>
-            </div>
-          </div>
-
-          {/* Location & GPS */}
+        {/* Form Body */}
+        <form onSubmit={handleStart} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           <div>
             <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-              Premises Coordinates & District
+              Establishment / Trader Name *
             </label>
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-start space-x-3">
-              <MapPin className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
-              <div className="text-sm">
-                <p className="font-semibold text-gray-900">{location.resolvedAddress}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Lat: {location.latitude.toFixed(4)}° N, Long: {location.longitude.toFixed(4)}° E • Accuracy ±{location.accuracy}m
-                </p>
-              </div>
+            <div className="relative">
+              <Building2 className="h-4 w-4 text-gray-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                required
+                value={establishmentName}
+                onChange={(e) => setEstablishmentName(e.target.value)}
+                placeholder="e.g. Royal Mart Supermarket / Modern Retail Depot"
+                className="w-full pl-10 pr-3.5 py-2.5 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:bg-white focus:outline-none"
+              />
             </div>
           </div>
 
-          {/* Target Registered Entity (if pre-selected) */}
-          {selectedEntity ? (
-            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wide">Target Registered Premises</span>
-                <span className="text-xs px-2 py-0.5 bg-emerald-200 text-emerald-900 font-semibold rounded-full">
-                  {selectedEntity.registration_no}
-                </span>
-              </div>
-              <p className="text-sm font-bold text-emerald-950 mt-1">{selectedEntity.firm_name}</p>
-              <p className="text-xs text-emerald-800/90 mt-0.5 truncate">{selectedEntity.establishment_address}</p>
-            </div>
-          ) : (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4 text-amber-700 shrink-0" />
-                <span>No entity pre-selected. You can search premises or identify during scan.</span>
-              </div>
-            </div>
-          )}
-
-          {/* Inspection Type Selector */}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-              Statutory Inspection Type
-            </label>
-            <select
-              value={inspectionType}
-              onChange={(e) => setInspectionType(e.target.value as any)}
-              className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600"
-            >
-              <option value="Routine inspection">Routine Periodic Inspection (Quarterly/Annual)</option>
-              <option value="Surprise inspection">Surprise Enforcement Inspection (Intelligence Driven)</option>
-              <option value="Complaint-based inspection">Consumer / Trade Complaint Verification</option>
-              <option value="Follow-up inspection">Follow-up Rectification Audit</option>
-              <option value="Registration-related inspection">New Packer / Importer Registration Audit</option>
-            </select>
-          </div>
-
-          {/* District Selector */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Enforcement District</label>
-              <input
-                type="text"
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm text-gray-800"
-              />
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                Premises Type
+              </label>
+              <select
+                value={establishmentType}
+                onChange={(e) => setEstablishmentType(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              >
+                <option value="Retail Store / Supermarket">Retail Store / Supermarket</option>
+                <option value="Wholesale Distributor">Wholesale Distributor</option>
+                <option value="Manufacturing / Packing Plant">Manufacturing Plant</option>
+                <option value="Warehouse / Logistics Depot">Warehouse Depot</option>
+                <option value="E-Commerce Fulfillment Hub">E-Commerce Hub</option>
+              </select>
             </div>
+
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">State / UT</label>
-              <input
-                type="text"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm text-gray-800"
-              />
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                Inspection Type
+              </label>
+              <select
+                value={inspectionType}
+                onChange={(e) => setInspectionType(e.target.value as any)}
+                className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none"
+              >
+                <option value="Routine inspection">Routine Inspection</option>
+                <option value="Surprise inspection">Surprise Inspection</option>
+                <option value="Complaint-based inspection">Complaint-Based</option>
+                <option value="Follow-up inspection">Follow-Up Inspection</option>
+              </select>
             </div>
           </div>
-        </div>
 
-        {/* Footer Actions */}
-        <div className="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end space-x-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-900 rounded-xl hover:bg-gray-100"
-          >
-            Cancel
-          </button>
-          <button
-            disabled={isSubmitting}
-            onClick={handleStart}
-            className="px-6 py-2.5 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center space-x-2"
-          >
-            <CheckCircle className="h-4 w-4" />
-            <span>{isSubmitting ? 'Starting Session...' : 'Start Inspection'}</span>
-          </button>
-        </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+              Premises Physical Address
+            </label>
+            <input
+              type="text"
+              value={premisesAddress}
+              onChange={(e) => setPremisesAddress(e.target.value)}
+              placeholder="e.g. Plot 14, Commercial Complex, Sector 2"
+              className="w-full px-3.5 py-2 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none"
+            />
+          </div>
+
+          {/* GPS Location Pill */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <MapPin className="h-4 w-4 text-blue-600" />
+              <span>
+                GPS: {location.latitude.toFixed(4)}°N, {location.longitude.toFixed(4)}°E (±{location.accuracy}m)
+              </span>
+            </div>
+            <span className="font-bold text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded">
+              {location.isGpsLocked ? 'GPS Verified' : 'Standard Circle'}
+            </span>
+          </div>
+
+          {/* Officer & Timestamp */}
+          <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
+            <span>Inspector: <strong className="text-gray-800">{user?.name}</strong></span>
+            <span>{now.toLocaleTimeString()}</span>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end space-x-3 pt-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-xl transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-5 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md transition-all disabled:opacity-50"
+            >
+              {isSubmitting ? 'Initiating Session...' : 'Create & Start Inspection'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

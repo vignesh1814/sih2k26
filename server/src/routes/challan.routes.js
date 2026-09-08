@@ -3,7 +3,6 @@ import { Challan } from '../models/Challan.js';
 import { Scan } from '../models/Scan.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { inMemoryStore, isDbConnected } from '../db.js';
-import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -42,14 +41,15 @@ router.get('/challans', async (req, res) => {
   }
 });
 
-// Issue a New Legal Challan (Superior Officer)
+// Issue a New Legal Challan (District Legal Metrology Officer)
 router.post('/challans/issue', async (req, res) => {
   try {
     const {
       scan_id,
       manufacturer_name,
       product_name,
-      issued_by = 'Dr. R. K. Verma, Controller of Legal Metrology',
+      issued_by = 'District Legal Metrology Officer',
+      issued_by_role = 'DLMO',
       inspector_name = 'Field Inspector',
       violation_codes = [],
       act_sections = ['Section 36(1) of Legal Metrology Act, 2009'],
@@ -74,7 +74,7 @@ router.post('/challans/issue', async (req, res) => {
       manufacturer_name,
       product_name,
       issued_by,
-      issued_by_role: 'SUPERIOR',
+      issued_by_role: issued_by_role || 'DLMO',
       inspector_name,
       violation_codes: Array.isArray(violation_codes) ? violation_codes : [violation_codes],
       act_sections: Array.isArray(act_sections) ? act_sections : [act_sections],
@@ -97,7 +97,7 @@ router.post('/challans/issue', async (req, res) => {
     const auditDoc = {
       timestamp: now,
       user_name: issued_by,
-      user_role: 'SUPERIOR',
+      user_role: 'DLMO',
       action: 'ISSUE_CHALLAN',
       resource: challan_id,
       details: `Statutory Compounding Challan of ₹${penalty_amount} issued against ${manufacturer_name} for commodity ${product_name}`,
@@ -113,7 +113,7 @@ router.post('/challans/issue', async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Statutory challan successfully issued and recorded in legal registry.',
+      message: 'Statutory challan successfully issued and recorded.',
       challan: challanDoc
     });
   } catch (err) {
@@ -195,7 +195,7 @@ router.put('/challans/:id/status', async (req, res) => {
       action: status === 'PAID' ? 'FINE_PAID_SETTLED' : 'CHALLAN_STATUS_UPDATE',
       resource: challanId,
       details: status === 'PAID' 
-        ? `Fine of ₹${updated.penalty_amount || 'N/A'} paid via ${payment_mode} (Ref: ${txnId}). Non-compliance case settled.`
+        ? `Fine of ₹${updated.penalty_amount || 'N/A'} paid via ${payment_mode} (Ref: ${txnId}). Case settled.`
         : `Challan status changed to ${status}. Response: "${response_text || 'No remarks'}"`,
       status: 'SUCCESS',
       ip_address: req.ip || '127.0.0.1'

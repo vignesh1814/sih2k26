@@ -3,7 +3,10 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { connectDB, isDbConnected } from './db.js';
+import { connectDB, isDbConnected, inMemoryStore } from './db.js';
+import { Scan } from './models/Scan.js';
+import { Measurement } from './models/Measurement.js';
+import { InspectionSession } from './models/InspectionSession.js';
 
 import authRoutes from './routes/auth.routes.js';
 import scanRoutes from './routes/scan.routes.js';
@@ -17,7 +20,12 @@ import ruleRoutes from './routes/rule.routes.js';
 import inspectionRoutes from './routes/inspection.routes.js';
 import enforcementRoutes from './routes/enforcement.routes.js';
 
+import { fileURLToPath } from 'url';
+
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 8001;
@@ -30,10 +38,14 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Static directories
-const uploadsDir = path.join(process.cwd(), 'server', 'uploads');
-const reportsDir = path.join(process.cwd(), 'server', 'reports');
-const datasetDir = path.join(process.cwd(), 'synthetic_dataset');
+// Static directories (resolved relative to server root)
+const serverDir = path.resolve(__dirname, '..');
+const repoDir = path.resolve(serverDir, '..');
+const uploadsDir = path.join(serverDir, 'uploads');
+const reportsDir = path.join(serverDir, 'reports');
+const datasetDir = fs.existsSync(path.join(repoDir, 'synthetic_dataset'))
+  ? path.join(repoDir, 'synthetic_dataset')
+  : path.join(serverDir, 'synthetic_dataset');
 
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true });
@@ -72,6 +84,48 @@ app.use('/api', reportRoutes);
 app.use('/api', auditRoutes);
 app.use('/api', challanRoutes);
 app.use('/api', analyticsRoutes);
+
+// Offline inspection synchronization endpoint (UC-SYS-04)
+app.post(['/api/v1/sync', '/api/sync'], async (req, res) => {
+  try {
+    const { items = [] } = req.body;
+    let syncedCount = 0;
+
+    for (const item of items) {
+      if ((item.type === 'SCAN' || item.type === 'scan') && item.payload) {
+        if (isDbConnected()) {
+          try { await Scan.create(item.payload); } catch (e) {}
+        } else {
+          inMemoryStore.scans.unshift(item.payload);
+        }
+        syncedCount++;
+      } else if ((item.type === 'MEASUREMENT' || item.type === 'measurement') && item.payload) {
+        if (isDbConnected()) {
+          try { await Measurement.create(item.payload); } catch (e) {}
+        } else {
+          inMemoryStore.measurements.unshift(item.payload);
+        }
+        syncedCount++;
+      } else if ((item.type === 'SESSION' || item.type === 'session') && item.payload) {
+        if (isDbConnected()) {
+          try { await InspectionSession.create(item.payload); } catch (e) {}
+        } else {
+          inMemoryStore.sessions.unshift(item.payload);
+        }
+        syncedCount++;
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Successfully synchronized ${syncedCount} offline records.`,
+      synced_count: syncedCount
+    });
+  } catch (err) {
+    console.error('[Sync error]', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // Friendly GET handlers for endpoints that usually expect POST
 app.get('/api/v1/scan', (req, res) => {

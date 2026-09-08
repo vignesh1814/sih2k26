@@ -54,7 +54,7 @@ const Reports: React.FC = () => {
   const [challanNotes, setChallanNotes] = useState<string>('Statutory non-compliance compounding notice under Legal Metrology Act, 2009.')
   const [isIssuingChallan, setIsIssuingChallan] = useState<boolean>(false)
 
-  const isSuperior = user?.role === 'SUPERIOR' || user?.role === 'ADMIN'
+  const isDLMO = user?.role === 'DLMO' || user?.role === 'SUPERIOR' || user?.role === 'ADMIN'
 
   useEffect(() => {
     fetchReportsData()
@@ -409,8 +409,8 @@ const Reports: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end space-x-1.5">
-                      {/* SUPERIOR OFFICER: ISSUE CHALLAN BUTTON */}
-                      {isSuperior && report.status === 'FAIL' && (
+                      {/* DLMO: ISSUE CHALLAN BUTTON */}
+                      {isDLMO && report.status === 'FAIL' && (
                         <button
                           onClick={() => handleOpenIssueChallan(report)}
                           className="flex items-center space-x-1 px-2.5 py-1 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-sm transition-all"
@@ -514,7 +514,7 @@ const Reports: React.FC = () => {
             </div>
 
             <div className="flex space-x-2 pt-2">
-              {isSuperior && viewingReport.status === 'FAIL' && (
+              {isDLMO && viewingReport.status === 'FAIL' && (
                 <button
                   onClick={() => {
                     const rep = viewingReport

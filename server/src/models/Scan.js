@@ -9,13 +9,22 @@ const BoundingBoxSchema = new mongoose.Schema({
   text: String
 }, { _id: false });
 
+const HumanVerificationDecisionSchema = new mongoose.Schema({
+  rule_code: { type: String, required: true },
+  decision: { type: String, enum: ['CONFIRMED', 'REJECTED', 'NEEDS_REVIEW'], required: true },
+  officer_notes: { type: String, default: '' },
+  verified_by: { type: String, default: 'Field Inspector' },
+  timestamp: { type: Date, default: Date.now }
+}, { _id: false });
+
 const RuleViolationSchema = new mongoose.Schema({
   rule_code: { type: String, required: true },
   declaration: { type: String, required: true },
   reason: { type: String, required: true },
   severity: { type: String, enum: ['CRITICAL', 'WARNING'], default: 'CRITICAL' },
   suggested_correction: String,
-  bbox: [Number]
+  bbox: [Number],
+  human_decision: { type: String, enum: ['PENDING', 'CONFIRMED', 'REJECTED', 'NEEDS_REVIEW'], default: 'PENDING' }
 }, { _id: false });
 
 const ExtractedDeclarationsSchema = new mongoose.Schema({
@@ -44,20 +53,28 @@ const ImageQualityAssessmentSchema = new mongoose.Schema({
 
 const ScanSchema = new mongoose.Schema({
   scan_id: { type: String, required: true, unique: true, index: true },
+  session_id: { type: String, default: null, index: true },
   status: { 
     type: String, 
-    enum: ['PASS', 'FAIL', 'NEEDS_REVIEW', 'INSUFFICIENT_EVIDENCE'], 
+    enum: ['PASS', 'FAIL', 'NEEDS_REVIEW', 'INSUFFICIENT_EVIDENCE', 'SETTLED'], 
     required: true 
   },
   overall_confidence: { type: Number, default: 0.95 },
   image_quality: ImageQualityAssessmentSchema,
   declarations: ExtractedDeclarationsSchema,
   violations: [RuleViolationSchema],
+  verification_decisions: [HumanVerificationDecisionSchema],
   detections: [BoundingBoxSchema],
   evidence_hash: { type: String, required: true },
   image_url: String,
   message: String,
+  inspector_notes: { type: String, default: '' },
+  is_settled: { type: Boolean, default: false },
+  settled_at: { type: Date },
+  settlement_challan_id: { type: String },
+  is_manufacturer_self_check: { type: Boolean, default: false },
   created_at: { type: Date, default: Date.now, index: true }
 });
 
 export const Scan = mongoose.model('Scan', ScanSchema);
+export default Scan;

@@ -111,11 +111,11 @@ const SuperiorAnalytics: React.FC = () => {
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-lg border border-indigo-800/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2.5 mb-1.5">
-            <span className="p-1.5 bg-indigo-600 rounded-lg text-xs font-black uppercase tracking-wider">Superior Console</span>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight">Legal Metrology National Enforcement Hub</h1>
+            <span className="p-1.5 bg-indigo-600 rounded-lg text-xs font-black uppercase tracking-wider">DLMO Console</span>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight">District Legal Metrology Enforcement Hub</h1>
           </div>
           <p className="text-xs sm:text-sm text-indigo-200">
-            Directorate Oversight • Inspector Performance Tracking • Brand Risk Matrix • Legal Compounding Notices
+            District Officer Oversight • Inspector Performance Tracking • Brand Risk Matrix • Legal Compounding Notices
           </p>
         </div>
 

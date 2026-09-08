@@ -167,6 +167,7 @@ const AdminPanel: React.FC = () => {
   const RoleBadge: React.FC<{ role: UserRole }> = ({ role }) => {
     const colors: Record<UserRole, string> = {
       ADMIN: 'bg-red-100 text-red-700 border border-red-200',
+      DLMO: 'bg-purple-100 text-purple-700 border border-purple-200',
       SUPERIOR: 'bg-purple-100 text-purple-700 border border-purple-200',
       INSPECTOR: 'bg-blue-100 text-blue-700 border border-blue-200',
       MANUFACTURER: 'bg-amber-100 text-amber-700 border border-amber-200'

@@ -2,12 +2,13 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { UserRole } from '../types/auth'
 import { loginUser, logoutUser } from '../services/api'
 
-interface User {
+export interface User {
   id: string
   email: string
   name: string
   role: UserRole
   department: string
+  organization?: string
   jurisdiction: string
 }
 
@@ -50,27 +51,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (data.token) localStorage.setItem('lm_token', data.token)
           return
         }
-      } catch (apiErr) {
-        console.warn('[AuthContext] Backend login error, attempting local fallback:', apiErr)
+      } catch (apiErr: any) {
+        if (apiErr?.response?.status === 401) {
+          throw new Error('Invalid email or password')
+        }
+        console.warn('[AuthContext] Backend login connection error, falling back to local verification:', apiErr)
       }
 
       // Mock authentication fallback
-      const mockUsers: User[] = [
+      const mockUsers: (User & { password: string })[] = [
         {
           id: '1',
           email: 'inspector@lm.gov.in',
           name: 'Field Inspector Sharma',
           role: 'INSPECTOR',
           department: 'Metrology Central Enforcement Wing',
-          jurisdiction: 'Maharashtra'
+          organization: 'Legal Metrology Department',
+          jurisdiction: 'District Enforcement Unit',
+          password: 'inspector123'
         },
         {
           id: '2',
+          email: 'dlmo@lm.gov.in',
+          name: 'Dr. R. K. Verma',
+          role: 'DLMO',
+          department: 'Office of District Legal Metrology Officer',
+          organization: 'District Legal Metrology Directorate',
+          jurisdiction: 'District Headquarters',
+          password: 'dlmo123'
+        },
+        {
+          id: '2_compat',
           email: 'superior@lm.gov.in',
-          name: 'Dr. R. K. Verma (Controller)',
-          role: 'SUPERIOR',
-          department: 'Directorate of Legal Metrology HQ',
-          jurisdiction: 'National HQ (New Delhi)'
+          name: 'Dr. R. K. Verma',
+          role: 'DLMO',
+          department: 'Office of District Legal Metrology Officer',
+          organization: 'District Legal Metrology Directorate',
+          jurisdiction: 'District Headquarters',
+          password: 'superior123'
         },
         {
           id: '3',
@@ -78,25 +96,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           name: 'Sunrise Foods & FMCG Ltd',
           role: 'MANUFACTURER',
           department: 'Corporate Regulatory & Packaging Division',
-          jurisdiction: 'GIDC Gujarat & Pan-India'
-        },
-        {
-          id: '4',
-          email: 'admin@lm.gov.in',
-          name: 'System Superadmin',
-          role: 'ADMIN',
-          department: 'National IT & Standards Directorate',
-          jurisdiction: 'National'
+          organization: 'Sunrise Foods & FMCG Ltd',
+          jurisdiction: 'GIDC Gujarat & Pan-India',
+          password: 'brand123'
         }
       ]
 
-      const authenticatedUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase())
+      const authenticatedUser = mockUsers.find(
+        u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+      )
       if (!authenticatedUser) {
-        throw new Error('Invalid credentials')
+        throw new Error('Invalid email or password')
       }
 
-      setUser(authenticatedUser)
-      localStorage.setItem('lm_user', JSON.stringify(authenticatedUser))
+      const { password: _, ...cleanUser } = authenticatedUser
+      setUser(cleanUser)
+      localStorage.setItem('lm_user', JSON.stringify(cleanUser))
     } catch (error) {
       throw error
     } finally {

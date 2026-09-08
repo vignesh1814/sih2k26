@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import bcrypt from 'bcryptjs';
 import { User } from '../models/User.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { inMemoryStore, isDbConnected } from '../db.js';
@@ -12,33 +13,47 @@ const MOCK_USERS = [
     name: 'Field Inspector Sharma',
     role: 'INSPECTOR',
     department: 'Metrology Central Enforcement Wing',
-    jurisdiction: 'Maharashtra & Western Zone',
+    organization: 'Legal Metrology Department',
+    jurisdiction: 'District Enforcement Unit',
     password: 'inspector123'
   },
   {
     id: '2',
+    email: 'dlmo@lm.gov.in',
+    name: 'Dr. R. K. Verma',
+    role: 'DLMO',
+    department: 'Office of District Legal Metrology Officer',
+    organization: 'District Legal Metrology Directorate',
+    jurisdiction: 'District Headquarters',
+    password: 'dlmo123'
+  },
+  {
+    id: '2_compat',
     email: 'superior@lm.gov.in',
-    name: 'Dr. R. K. Verma (Controller)',
-    role: 'SUPERIOR',
-    department: 'Directorate of Legal Metrology HQ',
-    jurisdiction: 'National Headquarters (New Delhi)',
+    name: 'Dr. R. K. Verma',
+    role: 'DLMO',
+    department: 'Office of District Legal Metrology Officer',
+    organization: 'District Legal Metrology Directorate',
+    jurisdiction: 'District Headquarters',
     password: 'superior123'
   },
   {
     id: '3',
     email: 'manufacturer@brand.com',
-    name: 'Sunrise Foods & FMCG Ltd (Compliance Desk)',
+    name: 'Sunrise Foods & FMCG Ltd',
     role: 'MANUFACTURER',
     department: 'Corporate Regulatory & Packaging Division',
+    organization: 'Sunrise Foods & FMCG Ltd',
     jurisdiction: 'GIDC Gujarat & Pan-India Distribution',
     password: 'brand123'
   },
   {
     id: '4',
     email: 'admin@lm.gov.in',
-    name: 'System Superadmin',
-    role: 'ADMIN',
+    name: 'System Administrator',
+    role: 'DLMO', // Aligned to DLMO as highest supervisory role per SRS
     department: 'National IT & Standards Directorate',
+    organization: 'Legal Metrology Department',
     jurisdiction: 'National',
     password: 'admin123'
   }
@@ -48,10 +63,16 @@ const MOCK_USERS = [
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
     let foundUser = null;
+    let isDbUser = false;
 
     if (isDbConnected()) {
-      foundUser = await User.findOne({ email });
+      foundUser = await User.findOne({ email: email.toLowerCase() });
+      if (foundUser) isDbUser = true;
     }
 
     if (!foundUser) {
@@ -62,12 +83,32 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials or unauthorized account' });
     }
 
+    // Password validation
+    let isPasswordValid = false;
+    if (isDbUser && foundUser.password) {
+      // Check if hashed or plain
+      if (foundUser.password.startsWith('$2a$') || foundUser.password.startsWith('$2b$')) {
+        isPasswordValid = await bcrypt.compare(password, foundUser.password);
+      } else {
+        isPasswordValid = foundUser.password === password;
+      }
+    } else if (foundUser.password) {
+      isPasswordValid = foundUser.password === password;
+    }
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Incorrect password' });
+    }
+
+    const effectiveRole = foundUser.role === 'SUPERIOR' ? 'DLMO' : foundUser.role;
+
     const userData = {
       id: foundUser._id ? foundUser._id.toString() : foundUser.id || '1',
       email: foundUser.email,
       name: foundUser.name,
-      role: foundUser.role,
+      role: effectiveRole,
       department: foundUser.department,
+      organization: foundUser.organization || (effectiveRole === 'MANUFACTURER' ? foundUser.name : 'Legal Metrology Department'),
       jurisdiction: foundUser.jurisdiction
     };
 
@@ -78,7 +119,7 @@ router.post('/login', async (req, res) => {
       user_role: userData.role,
       action: 'LOGIN',
       resource: 'AUTH_SESSION',
-      details: `${userData.role} [${userData.name}] authenticated successfully from IP ${req.ip || '127.0.0.1'}`,
+      details: `${userData.role} [${userData.name}] authenticated successfully`,
       status: 'SUCCESS',
       ip_address: req.ip || '127.0.0.1'
     };
@@ -111,7 +152,7 @@ router.post('/logout', async (req, res) => {
       user_role: user.role || 'INSPECTOR',
       action: 'LOGOUT',
       resource: 'AUTH_SESSION',
-      details: `${user.role} [${user.name}] session terminated cleanly from IP ${req.ip || '127.0.0.1'}`,
+      details: `${user.role} [${user.name}] session terminated cleanly`,
       status: 'SUCCESS',
       ip_address: req.ip || '127.0.0.1'
     };

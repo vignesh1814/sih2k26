@@ -50,11 +50,16 @@ export const RBACProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   const hasRole = (role: UserRole): boolean => {
-    return user?.role === role
+    if (!user) return false
+    if (role === 'DLMO' || role === 'SUPERIOR') {
+      return user.role === 'DLMO' || user.role === 'SUPERIOR'
+    }
+    return user.role === role
   }
 
   const hasAnyRole = (roles: UserRole[]): boolean => {
-    return user ? roles.includes(user.role) : false
+    if (!user) return false
+    return roles.some(r => hasRole(r))
   }
 
   const hasHigherRole = (role: UserRole): boolean => {

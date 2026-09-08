@@ -190,7 +190,7 @@ const EntityIdentification: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSessionStarted={handleSessionStarted}
-        selectedEntity={selectedEntity}
+        initialEstablishmentName={selectedEntity?.firm_name}
       />
     </div>
   )
