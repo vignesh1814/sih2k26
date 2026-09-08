@@ -97,11 +97,21 @@ export class ExtractionService {
       }
     }
 
-    // 4. Unit Sale Price (USP) under Rule 6(11) (e.g. USP Rs. 0.20/g, Rs 50/kg)
-    const uspMatch = fullText.match(/(?:Unit\s*Sale\s*Price|USP)\s*[:\-.]?\s*(?:Rs\.?|rs\.?|INR|[₹\u20B9])?\s*(\d+(?:\.\d+)?)\s*(?:per|\/)\s*([a-zA-Z]+)/i);
-    if (uspMatch) {
-      const parsedUsp = parseFloat(uspMatch[1]);
-      if (!isNaN(parsedUsp)) decl.unit_sale_price = parsedUsp;
+    // 4. Unit Sale Price (USP) under Rule 6(11)
+    // Matches patterns like "USP Rs. 1.50 / g", "1.50 / g", "1.50/g", "1.50 g", "Rs 1.50 per g", "₹ 1.50 / 100g"
+    const explicitUsp = fullText.match(/(?:Unit\s*Sale\s*Price|USP)\s*[:\-.]?\s*(?:Rs\.?|rs\.?|INR|[₹\u20B9])?\s*(\d+(?:\.\d+)?)\s*(?:per|\/|\s)\s*([a-zA-Z0-9]+)/i);
+    const slashUsp = fullText.match(/(?:(?:Rs\.?|rs\.?|[₹\u20B9]|INR)\s*)?(\d+(?:\.\d+)?)\s*(?:\/|per|\s)\s*(?:g|gm|gms|kg|ml|l|ltr|N|count|piece|100g|100ml|10g)\b/i);
+    const perUnitDecimal = fullText.match(/\b(\d+\.\d{1,2})\s*(?:g|gm|ml|l)\b/i);
+
+    if (explicitUsp) {
+      const parsed = parseFloat(explicitUsp[1]);
+      if (!isNaN(parsed)) decl.unit_sale_price = parsed;
+    } else if (slashUsp) {
+      const parsed = parseFloat(slashUsp[1]);
+      if (!isNaN(parsed)) decl.unit_sale_price = parsed;
+    } else if (perUnitDecimal && (!decl.net_quantity || parseFloat(decl.net_quantity) !== parseFloat(perUnitDecimal[1]))) {
+      const parsed = parseFloat(perUnitDecimal[1]);
+      if (!isNaN(parsed)) decl.unit_sale_price = parsed;
     }
 
     // 5. Date of Manufacture / Packaging (e.g. 05/2024, May 2024, 12-2023, PKD 08/24)
@@ -127,30 +137,30 @@ export class ExtractionService {
       decl.manufacturer = mfdMatch[1].replace(/\n/g, ', ').trim();
     }
 
-    // 7. Customer / Consumer Care Helpline & Email
+    // 7. Customer / Consumer Care Helpline & Email (Any email address is considered Consumer Care)
     const careContacts = [];
+    const emailMatches = fullText.match(/\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})\b/g);
+    if (emailMatches && emailMatches.length > 0) {
+      careContacts.push(`Email: ${emailMatches[0].trim()}`);
+    }
+
     const tollFree = fullText.match(/\b(1800[-\s]?\d{2,3}[-\s]?\d{3,4}|\b1800\d{6,7}\b)\b/);
     if (tollFree) {
       careContacts.push(`Toll Free: ${tollFree[1].trim()}`);
     }
 
-    const email = fullText.match(/\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})\b/);
-    if (email) {
-      careContacts.push(`Email: ${email[1].trim()}`);
+    const careHeader = fullText.match(/(?:Consumer\s*Care|Customer\s*Care|Helpline|Grievance\s*Cell|Feedback|Customer\s*Support)\s*[:\-.]?\s*([^\n\r]+)/i);
+    if (careHeader && !careContacts.some(c => c.includes(careHeader[1].trim()))) {
+      careContacts.push(careHeader[1].trim());
     }
 
-    const careHeader = fullText.match(/(?:Consumer\s*Care|Customer\s*Care|Helpline|Grievance\s*Cell|Feedback)\s*[:\-.]?\s*([^\n\r]+)/i);
-    if (careHeader && careContacts.length === 0) {
-      careContacts.push(careHeader[1].trim());
+    const genPhone = fullText.match(/\b(?:Tel|Phone|Mob|Contact|Call)?\s*[:\-.]?\s*(\+91[-\s]?\d{10}|\b[6-9]\d{9}\b)/i);
+    if (genPhone && !careContacts.some(c => c.includes(genPhone[1].trim()))) {
+      careContacts.push(`Phone: ${genPhone[1].trim()}`);
     }
 
     if (careContacts.length > 0) {
       decl.consumer_care = careContacts.join(' | ');
-    } else {
-      const genPhone = fullText.match(/\b(?:Tel|Phone|Mob|Contact)?\s*[:\-.]?\s*(\+91[-\s]?\d{10}|\b[6-9]\d{9}\b)/i);
-      if (genPhone) {
-        decl.consumer_care = `Phone: ${genPhone[1].trim()}`;
-      }
     }
 
     // 8. Barcode (EAN-13 or UPC-A)

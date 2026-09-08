@@ -13,6 +13,11 @@ import AdminPanel from './pages/AdminPanel'
 import SuperiorAnalytics from './pages/SuperiorAnalytics'
 import ManufacturerPortal from './pages/ManufacturerPortal'
 import Documentation from './pages/Documentation'
+import EntityIdentification from './pages/EntityIdentification'
+import QuantityVerification from './pages/QuantityVerification'
+import EntityHistory from './pages/EntityHistory'
+import SeizureEvidence from './pages/SeizureEvidence'
+import OfflineSync from './pages/OfflineSync'
 import ProtectedRoute from './components/ProtectedRoute'
 
 const RoleDefaultRedirect: React.FC = () => {
@@ -42,6 +47,13 @@ function App() {
                     <Routes>
                       <Route path="/" element={<RoleDefaultRedirect />} />
                       <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/entities" element={<EntityIdentification />} />
+                      <Route path="/scan" element={<Scan />} />
+                      <Route path="/quantity" element={<QuantityVerification />} />
+                      <Route path="/reports" element={<Reports />} />
+                      <Route path="/history" element={<EntityHistory />} />
+                      <Route path="/seizures" element={<SeizureEvidence />} />
+                      <Route path="/sync" element={<OfflineSync />} />
                       <Route 
                         path="/superior-analytics" 
                         element={
@@ -58,8 +70,6 @@ function App() {
                           </ProtectedRoute>
                         } 
                       />
-                      <Route path="/scan" element={<Scan />} />
-                      <Route path="/reports" element={<Reports />} />
                       <Route path="/audit-trail" element={<AuditTrail />} />
                       <Route 
                         path="/admin" 

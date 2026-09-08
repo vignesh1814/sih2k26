@@ -12,6 +12,10 @@ import auditRoutes from './routes/audit.routes.js';
 import healthRoutes from './routes/health.routes.js';
 import challanRoutes from './routes/challan.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
+import entityRoutes from './routes/entity.routes.js';
+import ruleRoutes from './routes/rule.routes.js';
+import inspectionRoutes from './routes/inspection.routes.js';
+import enforcementRoutes from './routes/enforcement.routes.js';
 
 dotenv.config();
 
@@ -47,6 +51,10 @@ app.use('/health', healthRoutes);
 
 // Mount API Routes
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/entities', entityRoutes);
+app.use('/api/v1/rules', ruleRoutes);
+app.use('/api/v1/inspections', inspectionRoutes);
+app.use('/api/v1/enforcement', enforcementRoutes);
 app.use('/api/v1', scanRoutes);
 app.use('/api/v1', reportRoutes);
 app.use('/api/v1', auditRoutes);
@@ -55,6 +63,10 @@ app.use('/api/v1', analyticsRoutes);
 
 // Aliases under /api
 app.use('/api/auth', authRoutes);
+app.use('/api/entities', entityRoutes);
+app.use('/api/rules', ruleRoutes);
+app.use('/api/inspections', inspectionRoutes);
+app.use('/api/enforcement', enforcementRoutes);
 app.use('/api', scanRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', auditRoutes);

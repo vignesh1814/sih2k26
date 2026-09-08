@@ -15,7 +15,9 @@ import {
   Users,
   BarChart3,
   Building2,
-  AlertTriangle
+  AlertTriangle,
+  Scale,
+  Ruler
 } from 'lucide-react'
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -26,29 +28,39 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate()
 
   const navigation = [
-    // Superior Specific
+    // Superior Specific Overview
     { 
       name: 'Superior Analytics & Challans', 
       href: '/superior-analytics', 
       icon: BarChart3, 
       permission: { resource: 'superior_analytics', action: 'view' },
-      badge: 'HQ Authority'
+      badge: 'HQ Authority',
+      allowedRoles: ['SUPERIOR', 'ADMIN']
     },
-    // Manufacturer Specific
+    // Manufacturer Specific Portal
     { 
       name: 'Challans & Audit Reports', 
       href: '/manufacturer-portal', 
       icon: Building2, 
       permission: { resource: 'manufacturer_portal', action: 'view' },
-      badge: 'Brand Portal'
+      badge: 'Brand Portal',
+      allowedRoles: ['MANUFACTURER', 'SUPERIOR', 'ADMIN']
     },
-    // Inspector & General
+    // Field Inspector & Superior Shared Workflow
     { 
       name: 'Inspector Dashboard', 
       href: '/dashboard', 
       icon: LayoutDashboard, 
       permission: { resource: 'dashboard', action: 'view' },
-      hideForRoles: ['MANUFACTURER', 'SUPERIOR']
+      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
+    },
+    {
+      name: 'Premises & Entities',
+      href: '/entities',
+      icon: Building2,
+      permission: { resource: 'scan', action: 'create' },
+      badge: 'Rule 27',
+      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
     },
     { 
       name: user?.role === 'MANUFACTURER' ? 'Pre-Market Label Scan' : 'Scan Package', 
@@ -56,17 +68,49 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       icon: Scan, 
       permission: { resource: 'scan', action: 'create' } 
     },
+    {
+      name: 'Quantity Verification',
+      href: '/quantity',
+      icon: Scale,
+      permission: { resource: 'scan', action: 'create' },
+      badge: 'MPE Sched. 2',
+      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
+    },
     { 
       name: user?.role === 'MANUFACTURER' ? 'Market Inspection Records' : 'Inspection Reports', 
       href: '/reports', 
       icon: FileText, 
       permission: { resource: 'reports', action: 'view' } 
     },
+    {
+      name: 'Entity Compliance History',
+      href: '/history',
+      icon: History,
+      permission: { resource: 'reports', action: 'view' },
+      badge: 'Analytics',
+      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
+    },
+    {
+      name: 'Seizure & Evidence',
+      href: '/seizures',
+      icon: AlertTriangle,
+      permission: { resource: 'scan', action: 'create' },
+      badge: 'Sec. 15',
+      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
+    },
+    {
+      name: 'Offline Field Sync',
+      href: '/sync',
+      icon: Shield,
+      permission: { resource: 'scan', action: 'create' },
+      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
+    },
     { 
       name: 'Audit Trail', 
       href: '/audit-trail', 
-      icon: History, 
-      permission: { resource: 'audit', action: 'view' } 
+      icon: BarChart3, 
+      permission: { resource: 'audit', action: 'view' },
+      allowedRoles: ['INSPECTOR', 'SUPERIOR', 'ADMIN']
     },
     { 
       name: 'LMPC Legal Standards', 
@@ -81,7 +125,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   ]
 
   const filteredNavigation = navigation.filter(item => {
-    if (item.hideForRoles && user?.role && item.hideForRoles.includes(user.role)) {
+    if (item.allowedRoles && user?.role && !item.allowedRoles.includes(user.role)) {
       return false
     }
     return hasPermission(item.permission.resource, item.permission.action)

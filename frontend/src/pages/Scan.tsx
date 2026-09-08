@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useRBAC } from '../contexts/RBACContext'
 import { 
   Upload, 
@@ -19,14 +20,23 @@ import {
   Trash2,
   HelpCircle,
   Database,
-  Tag
+  Tag,
+  CheckCircle2,
+  AlertTriangle,
+  Scale,
+  Building2,
+  ChevronRight,
+  ShieldCheck,
+  FileText
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { 
   scanPackage, 
   scanMultiPackages,
   generateReport, 
-  ScanResponse
+  ScanResponse,
+  RuleViolation,
+  InspectionSession
 } from '../services/api'
 
 type PanelKey = 'front' | 'back' | 'bottom' | 'top' | 'side_mrp' | 'side_nutrition'
@@ -91,680 +101,524 @@ const INITIAL_PANELS: Record<PanelKey, PanelSlot> = {
   }
 }
 
+interface ViolationVerificationState {
+  [ruleCode: string]: 'CONFIRMED' | 'REJECTED' | 'NEEDS_REVIEW' | 'PENDING'
+}
+
 const Scan: React.FC = () => {
+  const navigate = useNavigate()
   const { hasPermission } = useRBAC()
   
   const [panels, setPanels] = useState<Record<PanelKey, PanelSlot>>(INITIAL_PANELS)
   const [activePanelKey, setActivePanelKey] = useState<PanelKey>('front')
   const [isScanning, setIsScanning] = useState(false)
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null)
+  const [activeSession, setActiveSession] = useState<InspectionSession | null>(null)
+  
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(true)
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
-  const [showHitlModal, setShowHitlModal] = useState(false)
-  const [hitlVerified, setHitlVerified] = useState(false)
-  const [officerNotes, setOfficerNotes] = useState('')
+  const [selectedViolation, setSelectedViolation] = useState<RuleViolation | null>(null)
+  const [verificationStates, setVerificationStates] = useState<ViolationVerificationState>({})
+  
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
-  const singleFileInputRef = useRef<HTMLInputElement>(null)
-  const batchFileInputRef = useRef<HTMLInputElement>(null)
-
-  const capturedCount = Object.values(panels).filter(p => p.previewUrl !== null).length
-
-  const handleSinglePanelSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const url = URL.createObjectURL(file)
-      setPanels(prev => ({
-        ...prev,
-        [activePanelKey]: {
-          ...prev[activePanelKey],
-          file: file,
-          previewUrl: url
-        }
-      }))
-      setScanResult(null)
-      toast.success(`${panels[activePanelKey].label} photo loaded`)
-    }
-  }
-
-  const handleBatchSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
-    const keys: PanelKey[] = ['front', 'back', 'side_mrp', 'bottom', 'top', 'side_nutrition']
-    const updated = { ...panels }
-
-    for (let i = 0; i < Math.min(files.length, keys.length); i++) {
-      const file = files[i]
-      const k = keys[i]
-      updated[k] = {
-        ...updated[k],
-        file: file,
-        previewUrl: URL.createObjectURL(file)
+  useEffect(() => {
+    const raw = sessionStorage.getItem('sih26034_active_session')
+    if (raw) {
+      try {
+        setActiveSession(JSON.parse(raw))
+      } catch (e) {
+        console.warn('Could not parse active session:', e)
       }
     }
+  }, [])
 
-    setPanels(updated)
-    setScanResult(null)
-    toast.success(`Assigned ${Math.min(files.length, keys.length)} photos to packaging angle slots`)
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, panelKey?: PanelKey) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const targetKey = panelKey || activePanelKey
+    const previewUrl = URL.createObjectURL(file)
+
+    setPanels(prev => ({
+      ...prev,
+      [targetKey]: {
+        ...prev[targetKey],
+        file,
+        previewUrl
+      }
+    }))
+    toast.success(`Loaded image for ${panels[targetKey].label}`)
   }
 
-  const handleRemovePanel = (key: PanelKey, e: React.MouseEvent) => {
+  const handleRemovePanel = (panelKey: PanelKey, e: React.MouseEvent) => {
     e.stopPropagation()
     setPanels(prev => ({
       ...prev,
-      [key]: {
-        ...prev[key],
+      [panelKey]: {
+        ...prev[panelKey],
         file: null,
         previewUrl: null
       }
     }))
+    toast('Image cleared', { icon: '🗑️' })
   }
 
-  const handleStartAudit = async () => {
-    const filled = Object.values(panels).filter(p => p.file !== null)
-    if (filled.length === 0) {
-      toast.error('Please upload or select at least one package picture')
+  const handleExecuteScan = async () => {
+    const populatedPanels = Object.values(panels).filter(p => p.file !== null)
+    if (populatedPanels.length === 0) {
+      toast.error('Please capture or upload at least 1 package panel photo.')
       return
     }
 
     setIsScanning(true)
+    setScanResult(null)
+
     try {
-      if (filled.length === 1 && filled[0].file) {
-        const res = await scanPackage(filled[0].file)
-        setScanResult(res)
+      let result: ScanResponse
+      if (populatedPanels.length === 1) {
+        result = await scanPackage(populatedPanels[0].file!)
       } else {
-        const payload = filled.map(p => ({ panel: p.label, file: p.file! }))
-        const res = await scanMultiPackages(payload)
-        setScanResult(res)
+        result = await scanMultiPackages(
+          populatedPanels.map(p => ({ panel: p.label, file: p.file! }))
+        )
+      }
+
+      setScanResult(result)
+
+      // Initialize verification states
+      const initVerif: ViolationVerificationState = {}
+      result.violations.forEach(v => {
+        initVerif[v.rule_code] = 'PENDING'
+      })
+      setVerificationStates(initVerif)
+
+      if (result.status === 'PASS') {
+        toast.success('Package is Fully Compliant with Legal Metrology PCR Rules!')
+      } else if (result.status === 'FAIL') {
+        toast.error(`Compliance Check Failed: ${result.violations.length} statutory defect(s) detected.`)
+      } else {
+        toast('Review Required: Human verification needed.', { icon: '⚠️' })
       }
     } catch (err: any) {
-      console.error('[Scan] Audit processing failed:', err)
-      const detail = err?.response?.data?.detail || err?.message || 'Backend server is offline or unreachable'
-      toast.error(`Audit failed: ${detail}`, { duration: 6000 })
+      console.error('Scan error:', err)
+      toast.error(err?.response?.data?.message || 'Error communicating with OCR & Compliance Engine.')
     } finally {
       setIsScanning(false)
     }
   }
 
-  const handleResetAll = () => {
-    setPanels(INITIAL_PANELS)
-    setActivePanelKey('front')
-    setScanResult(null)
-    setHitlVerified(false)
-    if (singleFileInputRef.current) singleFileInputRef.current.value = ''
-    if (batchFileInputRef.current) batchFileInputRef.current.value = ''
+  const handleVerifyViolation = (ruleCode: string, state: 'CONFIRMED' | 'REJECTED' | 'NEEDS_REVIEW') => {
+    setVerificationStates(prev => ({
+      ...prev,
+      [ruleCode]: state
+    }))
+    toast.success(`Violation marked as ${state.replace(/_/g, ' ')}`)
   }
 
-  const handleDownloadChallan = async () => {
-    if (!scanResult) return
-    setIsGeneratingPdf(true)
-    try {
-      const res = await generateReport({
-        scan_id: scanResult.scan_id,
-        officer_name: 'Inspector S. K. Sharma',
-        station_jurisdiction: 'Maharashtra Zone II',
-        notes: officerNotes || `Statutory inspection of packaging label.`
-      })
-      window.open(res.pdf_url, '_blank')
-      toast.success('Statutory Legal Metrology Challan generated')
-    } catch (err) {
-      toast.error('Failed to generate PDF Challan')
-    } finally {
-      setIsGeneratingPdf(false)
+  const mandatoryDeclarationsList = [
+    {
+      name: 'Common / Generic Name of Commodity',
+      rule: 'Rule 6(1)(b)',
+      detected: !!scanResult?.declarations?.generic_name,
+      value: scanResult?.declarations?.generic_name || 'Not detected'
+    },
+    {
+      name: 'Net Quantity in Standard SI Units',
+      rule: 'Rule 6(1)(c) & Rule 12',
+      detected: !!scanResult?.declarations?.net_quantity,
+      value: scanResult?.declarations ? `${scanResult.declarations.net_quantity || ''} ${scanResult.declarations.unit || ''}`.trim() : 'Not detected'
+    },
+    {
+      name: 'MRP (Inclusive of All Taxes)',
+      rule: 'Rule 6(1)(e)',
+      detected: !!scanResult?.declarations?.mrp,
+      value: scanResult?.declarations?.mrp_text || (scanResult?.declarations?.mrp ? `₹${scanResult.declarations.mrp}` : 'Not detected')
+    },
+    {
+      name: 'Unit Sale Price (USP)',
+      rule: 'Rule 6(11)',
+      detected: !!scanResult?.declarations?.unit_sale_price,
+      value: scanResult?.declarations?.unit_sale_price ? `₹${scanResult.declarations.unit_sale_price} per ${scanResult.declarations.unit || 'g'}` : 'Calculated/Stated'
+    },
+    {
+      name: 'Month & Year of Manufacture / Packing',
+      rule: 'Rule 6(1)(d)',
+      detected: !!scanResult?.declarations?.mfg_date,
+      value: scanResult?.declarations?.mfg_date || 'Not detected'
+    },
+    {
+      name: 'Name & Complete Address of Manufacturer / Packer',
+      rule: 'Rule 6(1)(a)',
+      detected: !!scanResult?.declarations?.manufacturer,
+      value: scanResult?.declarations?.manufacturer || 'Not detected'
+    },
+    {
+      name: 'Country of Origin / Manufacture',
+      rule: 'Rule 6(1)(g)',
+      detected: !!scanResult?.declarations?.country_of_origin,
+      value: scanResult?.declarations?.country_of_origin || 'Not detected'
+    },
+    {
+      name: 'Consumer Grievance Helpline / Email',
+      rule: 'Rule 6(2)',
+      detected: !!scanResult?.declarations?.consumer_care,
+      value: scanResult?.declarations?.consumer_care || 'Not detected'
     }
-  }
-
-  const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
-    const config = {
-      PASS: { color: 'bg-emerald-100 text-emerald-800 border-emerald-300', icon: <CheckCircle className="h-4 w-4 text-emerald-600" /> },
-      FAIL: { color: 'bg-rose-100 text-rose-800 border-rose-300', icon: <XCircle className="h-4 w-4 text-rose-600" /> },
-      NEEDS_REVIEW: { color: 'bg-amber-100 text-amber-800 border-amber-300', icon: <AlertCircle className="h-4 w-4 text-amber-600" /> },
-      INSUFFICIENT_EVIDENCE: { color: 'bg-indigo-100 text-indigo-800 border-indigo-300', icon: <AlertCircle className="h-4 w-4 text-indigo-600" /> }
-    }
-    const current = config[status as keyof typeof config] || config.INSUFFICIENT_EVIDENCE
-
-    return (
-      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${current.color}`}>
-        {current.icon}
-        <span className="ml-1.5">{status.replace(/_/g, ' ')}</span>
-      </span>
-    )
-  }
-
-  if (!hasPermission('scan', 'create')) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600">You don't have permission to access the Scan Module.</p>
-        </div>
-      </div>
-    )
-  }
+  ]
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center space-x-2">
-            <Layers className="h-7 w-7 text-blue-600" />
-            <span>Packaging Statutory Compliance Studio</span>
-          </h1>
-          <p className="text-gray-600 text-sm mt-1">
-            Real OCR transcription &amp; deterministic legal validation under LMPC Rules, 2011.
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => singleFileInputRef.current?.click()}
-            className="flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm transition-all"
-          >
-            <Camera className="h-4 w-4" />
-            <span>Capture / Upload Photo</span>
-          </button>
-          <button
-            onClick={() => batchFileInputRef.current?.click()}
-            className="flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white rounded-xl shadow-sm transition-all"
-          >
-            <Upload className="h-4 w-4" />
-            <span>Batch Upload Panels</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Hidden File Inputs */}
-      <input
-        ref={singleFileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleSinglePanelSelect}
-        className="hidden"
-      />
-      <input
-        ref={batchFileInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        onChange={handleBatchSelect}
-        className="hidden"
-      />
-
-      {/* Packaging Surfaces & Angle Slots */}
-      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Camera className="h-5 w-5 text-blue-600" />
-            <span className="font-bold text-sm text-gray-900">
-              Packaging Surfaces &amp; Angles ({capturedCount} of 6 captured)
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => batchFileInputRef.current?.click()}
-              className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-md hover:bg-blue-100 font-medium transition-colors flex items-center space-x-1"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              <span>Batch Upload Custom Photos</span>
-            </button>
-            {capturedCount > 0 && (
-              <button
-                onClick={handleResetAll}
-                className="text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded transition-colors"
-              >
-                Clear All
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {(Object.values(panels) as PanelSlot[]).map((p) => {
-            const isSelected = activePanelKey === p.key
-            const hasPhoto = p.previewUrl !== null
-
-            return (
-              <div
-                key={p.key}
-                onClick={() => setActivePanelKey(p.key)}
-                className={`relative p-2.5 rounded-lg border-2 cursor-pointer transition-all flex flex-col justify-between min-h-[115px] ${
-                  isSelected 
-                    ? 'border-blue-600 bg-blue-50/60 shadow-sm' 
-                    : hasPhoto 
-                      ? 'border-emerald-300 bg-emerald-50/30 hover:border-emerald-400' 
-                      : 'border-dashed border-gray-300 bg-gray-50 hover:border-gray-400'
-                }`}
-              >
-                {/* Top Badge */}
-                <div className="flex items-center justify-between">
-                  <span className={`text-[11px] font-bold ${isSelected ? 'text-blue-900' : 'text-gray-700'}`}>
-                    {p.label}
-                  </span>
-                  {hasPhoto ? (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" title="Captured" />
-                  ) : (
-                    <span className="w-2 h-2 rounded-full bg-gray-300" title="Empty" />
-                  )}
-                </div>
-
-                {/* Center Preview or Add Button */}
-                <div className="my-1.5 flex items-center justify-center">
-                  {hasPhoto ? (
-                    <div className="relative group w-full h-12 rounded overflow-hidden bg-white border border-gray-200 flex items-center justify-center">
-                      <img src={p.previewUrl!} alt={p.label} className="w-full h-full object-contain" />
-                      <button
-                        onClick={(e) => handleRemovePanel(p.key, e)}
-                        className="absolute inset-0 bg-red-600/80 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                        title="Remove angle"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setActivePanelKey(p.key)
-                        singleFileInputRef.current?.click()
-                      }}
-                      className="text-gray-400 hover:text-blue-600 p-1 rounded transition-colors flex flex-col items-center"
-                    >
-                      <Plus className="h-5 w-5" />
-                      <span className="text-[10px] text-gray-500 font-medium">Add Photo</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Subtitle */}
-                <p className="text-[10px] text-gray-500 leading-tight truncate">
-                  {p.subtitle}
-                </p>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Main Studio Viewport (Image View + Audit Results) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Active Angle Photo & Bounding Box Viewer */}
-        <div className="lg:col-span-5 bg-white rounded-xl shadow-sm p-5 border border-gray-200 flex flex-col space-y-4">
-          <div className="flex items-center justify-between">
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Active Session Bar */}
+      {activeSession ? (
+        <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-2xl p-4 shadow-md flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-white/10 rounded-xl">
+              <ShieldCheck className="h-6 w-6 text-emerald-300" />
+            </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900">
-                {panels[activePanelKey].label} Inspection View
-              </h2>
-              <p className="text-xs text-gray-500">{panels[activePanelKey].subtitle}</p>
-            </div>
-
-            {panels[activePanelKey].previewUrl && scanResult && (
-              <button
-                onClick={() => setShowBoundingBoxes(!showBoundingBoxes)}
-                className="text-xs flex items-center space-x-1 text-blue-600 hover:text-blue-700 font-medium bg-blue-50 px-2.5 py-1 rounded"
-              >
-                {showBoundingBoxes ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                <span>{showBoundingBoxes ? 'Hide BBoxes' : 'Show BBoxes'}</span>
-              </button>
-            )}
-          </div>
-
-          {/* Active Image Box */}
-          {!panels[activePanelKey].previewUrl ? (
-            <div 
-              onClick={() => singleFileInputRef.current?.click()}
-              className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-500 cursor-pointer transition-colors bg-gray-50 flex flex-col items-center justify-center min-h-[300px]"
-            >
-              <Upload className="h-10 w-10 text-gray-400 mb-3" />
-              <p className="text-sm font-semibold text-gray-700">Upload or photograph {panels[activePanelKey].label}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Expected: {panels[activePanelKey].expectedDeclarations.join(', ')}
-              </p>
-              <button className="mt-4 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold shadow-sm">
-                Choose Picture
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="relative w-full h-[320px] bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center">
-                <img
-                  src={panels[activePanelKey].previewUrl!}
-                  alt={panels[activePanelKey].label}
-                  className="w-full h-full object-contain"
-                />
-
-                {/* Overlaid Bounding Boxes (Accurately scaled to 800x500 real synthetic dimensions) */}
-                {showBoundingBoxes && scanResult && scanResult.detections && (
-                  <svg 
-                    viewBox="0 0 800 500"
-                    preserveAspectRatio="xMidYMid meet"
-                    className="absolute inset-0 w-full h-full pointer-events-none"
-                  >
-                    {scanResult.detections.map((box, idx) => (
-                      <g key={idx}>
-                        <rect
-                          x={box.x_min}
-                          y={box.y_min}
-                          width={box.x_max - box.x_min}
-                          height={box.y_max - box.y_min}
-                          fill="rgba(59, 130, 246, 0.15)"
-                          stroke="#2563eb"
-                          strokeWidth="2"
-                        />
-                        <text
-                          x={box.x_min + 4}
-                          y={Math.max(box.y_min - 4, 12)}
-                          fill="#1d4ed8"
-                          fontSize="11"
-                          fontWeight="bold"
-                        >
-                          {box.text}
-                        </text>
-                      </g>
-                    ))}
-                  </svg>
-                )}
-              </div>
-
-              {/* Angle Switcher & Retake */}
-              <div className="flex items-center justify-between pt-1 text-xs">
-                <button
-                  onClick={() => singleFileInputRef.current?.click()}
-                  className="text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  Upload Alternate Picture for {panels[activePanelKey].label}
-                </button>
-                <span className="text-gray-500">
-                  {capturedCount} angle{capturedCount > 1 ? 's' : ''} loaded
+              <div className="flex items-center space-x-2">
+                <span className="font-mono font-bold text-xs bg-blue-700/80 px-2 py-0.5 rounded text-blue-100">
+                  {activeSession.session_id}
                 </span>
+                <span className="text-xs text-blue-200">• {activeSession.inspection_type}</span>
               </div>
+              <p className="font-black text-sm text-white mt-0.5">{activeSession.entity_name || 'Premises Under Audit'}</p>
             </div>
-          )}
+          </div>
 
-          {/* Run Audit Button */}
-          <div className="pt-2">
+          <div className="flex items-center space-x-2">
             <button
-              onClick={handleStartAudit}
-              disabled={isScanning || capturedCount === 0}
-              className="w-full flex items-center justify-center space-x-2 bg-gov-navy text-white py-3 px-4 rounded-xl hover:bg-gov-blue disabled:opacity-50 font-bold text-sm transition-colors shadow-md"
+              onClick={() => navigate('/quantity')}
+              className="px-3 py-1.5 bg-blue-800/80 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1"
             >
-              {isScanning ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Analyzing Label &amp; Validating Rules on Backend...</span>
-                </>
-              ) : (
-                <>
-                  <ScanIcon className="h-4 w-4" />
-                  <span>Run Statutory Audit ({capturedCount} Captured)</span>
-                </>
-              )}
+              <Scale className="h-3.5 w-3.5" />
+              <span>Weigh Sample</span>
+            </button>
+            <button
+              onClick={() => navigate('/seizures')}
+              className="px-3 py-1.5 bg-red-800/80 hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1"
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              <span>Seizure Memo</span>
             </button>
           </div>
         </div>
-
-        {/* Right Column: Extracted Declarations & LMPC Violations */}
-        <div className="lg:col-span-7 bg-white rounded-xl shadow-sm p-6 border border-gray-200 flex flex-col space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Extracted Declarations &amp; Findings</h2>
-              <p className="text-xs text-gray-500">Verified against Legal Metrology (Packaged Commodities) Rules, 2011</p>
-            </div>
-            {scanResult && <StatusBadge status={scanResult.status} />}
+      ) : (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+            <span>No active field inspection session linked. You can scan standalone or start an official session.</span>
           </div>
+          <button
+            onClick={() => navigate('/entities')}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs"
+          >
+            Identify Premises & Start
+          </button>
+        </div>
+      )}
 
-          {!scanResult ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-center space-y-3">
-              <ScanIcon className="h-12 w-12 text-gray-300" />
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Multi-Angle Capture Panel */}
+        <div className="lg:col-span-6 space-y-4">
+          <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-gray-700">No active audit results</p>
-                <p className="text-xs text-gray-400 mt-1 max-w-sm">
-                  Click one of the authentic dataset buttons above (<code className="text-blue-600">SYN_000</code>, <code className="text-blue-600">SYN_001</code>, <code className="text-blue-600">SYN_006</code>) to run the real OCR &amp; Zen Engine compliance audit.
-                </p>
+                <h2 className="text-base font-bold text-gray-900 flex items-center space-x-2">
+                  <Camera className="h-5 w-5 text-blue-600" />
+                  <span>Multi-Angle Package Photo Capture</span>
+                </h2>
+                <p className="text-xs text-gray-500">Capture Front (PDP), Back, Sides, and Bottom panels</p>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Message Banner */}
-              {scanResult.message && (
-                <div className={`p-3 rounded-lg text-xs font-medium border flex items-start space-x-2 ${
-                  scanResult.status === 'INSUFFICIENT_EVIDENCE'
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
-                    : scanResult.status === 'FAIL'
-                      ? 'bg-rose-50 border-rose-200 text-rose-800'
-                      : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                }`}>
-                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold">{scanResult.message}</p>
-                    <p className="text-[11px] text-gray-600 mt-0.5">
-                      Session Reference: <span className="font-mono font-bold text-gray-800">{scanResult.scan_id}</span> | 
-                      Confidence: <span className="font-bold text-blue-700">{(scanResult.overall_confidence > 1 ? scanResult.overall_confidence : scanResult.overall_confidence * 100).toFixed(1)}%</span>
-                    </p>
-                  </div>
-                </div>
-              )}
 
-              {/* Violations List */}
-              {scanResult.violations && scanResult.violations.length > 0 ? (
-                <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 space-y-3">
-                  <div className="flex items-center space-x-2 text-rose-800">
-                    <AlertCircle className="h-5 w-5 flex-shrink-0" />
-                    <h3 className="font-bold text-sm">
-                      {scanResult.violations.length} Statutory Violation{scanResult.violations.length > 1 ? 's' : ''} Detected
-                    </h3>
-                  </div>
-                  <div className="space-y-2">
-                    {scanResult.violations.map((v, i) => (
-                      <div key={i} className="bg-white p-3 rounded border border-rose-200 text-xs space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-rose-900">{v.rule_code} — {v.declaration}</span>
-                          <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-bold text-[10px] uppercase">
-                            {v.severity}
-                          </span>
-                        </div>
-                        <p className="text-rose-700">{v.reason}</p>
-                        {v.suggested_correction && (
-                          <p className="text-gray-600 pt-1 border-t border-rose-100">
-                            <span className="text-emerald-700 font-bold">Correction: </span>
-                            {v.suggested_correction}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+              <span className="text-xs px-2.5 py-1 bg-blue-50 text-blue-700 font-bold rounded-full">
+                {Object.values(panels).filter(p => p.file !== null).length} / 6 Captured
+              </span>
+            </div>
+
+            {/* Panel Selector Tabs */}
+            <div className="grid grid-cols-3 gap-2">
+              {Object.values(panels).map((p) => {
+                const isSelected = activePanelKey === p.key
+                const isCaptured = p.file !== null
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => setActivePanelKey(p.key)}
+                    className={`p-2.5 rounded-xl border text-left transition-all relative ${
+                      isSelected
+                        ? 'bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20 shadow-sm'
+                        : isCaptured
+                        ? 'bg-emerald-50/60 border-emerald-300'
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100/70'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-gray-900 truncate">{p.label}</span>
+                      {isCaptured && <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />}
+                    </div>
+                    <span className="text-[10px] text-gray-500 block truncate mt-0.5">{p.subtitle}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Active Panel Viewfinder / Upload Box */}
+            <div className="relative border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-slate-50 flex flex-col items-center justify-center min-h-[280px] overflow-hidden">
+              {panels[activePanelKey].previewUrl ? (
+                <div className="relative w-full h-full flex flex-col items-center">
+                  <img
+                    src={panels[activePanelKey].previewUrl!}
+                    alt={panels[activePanelKey].label}
+                    className="max-h-[240px] w-auto object-contain rounded-xl shadow-md"
+                  />
+                  <div className="mt-3 flex items-center space-x-2">
+                    <button
+                      onClick={(e) => handleRemovePanel(activePanelKey, e)}
+                      className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 flex items-center space-x-1"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Retake / Remove</span>
+                    </button>
                   </div>
                 </div>
               ) : (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3.5 flex items-center space-x-3 text-emerald-800 text-xs">
-                  <CheckCircle className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                <div className="text-center space-y-3">
+                  <div className="p-4 bg-white rounded-full shadow-sm mx-auto w-fit border border-gray-100">
+                    <Camera className="h-8 w-8 text-blue-600" />
+                  </div>
                   <div>
-                    <p className="font-bold">Zero Statutory Violations Detected</p>
-                    <p className="text-emerald-700">All mandatory Rule 6 declarations present with standard SI symbols and inclusive taxes phrase.</p>
+                    <h4 className="font-bold text-sm text-gray-900">
+                      Align {panels[activePanelKey].label} within frame
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Ensure text declarations are sharp, flat, and well-illuminated.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-center space-x-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-1.5"
+                    >
+                      <Camera className="h-4 w-4" />
+                      <span>Open Camera</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5"
+                    >
+                      <Upload className="h-4 w-4" />
+                      <span>Upload Photo</span>
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* Extracted Declarations Table */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 px-3.5 py-2 border-b border-gray-200 flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Extracted Mandatory Declarations (Rule 6)
-                  </span>
-                  <span className="text-[11px] text-blue-700 font-medium">LMPC 2011 &amp; 2022 Amendment</span>
-                </div>
-                <div className="divide-y divide-gray-100 text-xs">
-                  <div className="px-3.5 py-2 flex justify-between">
-                    <span className="text-gray-500 font-medium">Generic / Common Name:</span>
-                    <span className="font-bold text-gray-900">
-                      {scanResult.declarations.generic_name || <span className="text-rose-600">Missing</span>}
-                    </span>
-                  </div>
-                  <div className="px-3.5 py-2 flex justify-between">
-                    <span className="text-gray-500 font-medium">Net Quantity:</span>
-                    <span className="font-bold text-gray-900">
-                      {scanResult.declarations.net_quantity 
-                        ? `${scanResult.declarations.net_quantity} ${scanResult.declarations.unit || ''}`
-                        : <span className="text-rose-600">Missing</span>
-                      }
-                    </span>
-                  </div>
-                  <div className="px-3.5 py-2 flex justify-between">
-                    <span className="text-gray-500 font-medium">Maximum Retail Price (MRP):</span>
-                    <span className="font-bold text-gray-900">
-                      {scanResult.declarations.mrp ? `₹${scanResult.declarations.mrp.toFixed(2)}` : <span className="text-rose-600">Missing</span>}
-                      {scanResult.declarations.has_inclusive_phrase === true ? (
-                        <span className="text-emerald-600 font-semibold ml-1.5 text-[11px]">(Inclusive of all taxes)</span>
-                      ) : scanResult.declarations.has_inclusive_phrase === false ? (
-                        <span className="text-rose-600 font-semibold ml-1.5 text-[11px]">(Omitted Inclusive Phrase - Rule Violation!)</span>
-                      ) : null}
-                    </span>
-                  </div>
-                  <div className="px-3.5 py-2 flex justify-between">
-                    <span className="text-gray-500 font-medium">Unit Sale Price (USP):</span>
-                    <span className="font-bold text-gray-900">
-                      {scanResult.declarations.unit_sale_price 
-                        ? `₹${scanResult.declarations.unit_sale_price.toFixed(2)} / ${scanResult.declarations.unit || 'g'}`
-                        : <span className="text-gray-500 font-normal">Not detected</span>
-                      }
-                    </span>
-                  </div>
-                  <div className="px-3.5 py-2 flex justify-between">
-                    <span className="text-gray-500 font-medium">Manufacturing Date:</span>
-                    <span className="font-bold text-gray-900">{scanResult.declarations.mfg_date || 'Not detected'}</span>
-                  </div>
-                  <div className="px-3.5 py-2 flex justify-between">
-                    <span className="text-gray-500 font-medium">Manufacturer / Packer:</span>
-                    <span className="font-bold text-gray-900 text-right max-w-xs truncate">
-                      {scanResult.declarations.manufacturer || <span className="text-rose-600">Missing</span>}
-                    </span>
-                  </div>
-                  <div className="px-3.5 py-2 flex justify-between">
-                    <span className="text-gray-500 font-medium">Consumer Care Helpline:</span>
-                    <span className="font-bold text-gray-900">{scanResult.declarations.consumer_care || 'Not detected'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rule 7 Physical Font Size Calibration */}
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 flex items-center justify-between text-xs">
-                <div className="flex items-center space-x-2">
-                  <Ruler className="h-4 w-4 text-amber-700 flex-shrink-0" />
-                  <div>
-                    <p className="font-bold text-amber-900">Rule 7 PDP Font Height Verification</p>
-                    <p className="text-amber-700 text-[11px]">
-                      {hitlVerified ? 'Inspector verified font height with reference card.' : 'Calibrate physical millimeter font height.'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowHitlModal(true)}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-medium text-xs shadow-sm"
-                >
-                  {hitlVerified ? 'Re-Inspect' : 'HITL Calibrate'}
-                </button>
-              </div>
-
-              {/* Action: Download Challan */}
-              <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-gray-100">
-                <div className="text-[11px] text-gray-500 flex items-center space-x-1.5 truncate max-w-xs">
-                  <span className="font-mono">Evidence SHA-256:</span>
-                  <span className="font-mono text-gray-700 truncate">{scanResult.evidence_hash}</span>
-                </div>
-                <button
-                  onClick={handleDownloadChallan}
-                  disabled={isGeneratingPdf}
-                  className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-gov-navy text-white px-4 py-2 rounded-lg hover:bg-gov-blue text-xs font-semibold shadow-sm"
-                >
-                  {isGeneratingPdf ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      <span>Generating Challan...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download className="h-3.5 w-3.5" />
-                      <span>Download Statutory Challan (PDF)</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* HITL Calibration Modal */}
-      {showHitlModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-gray-200">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-base text-gray-900 flex items-center space-x-2">
-                <Ruler className="h-5 w-5 text-blue-600" />
-                <span>Human-In-The-Loop Scale Calibration</span>
-              </h3>
-              <button 
-                onClick={() => setShowHitlModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-bold"
-              >
-                &times;
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-600">
-              Per Section N of the SIH26034 Pre-Engineering Dossier, 2D monocular vision cannot resolve absolute millimeter font heights without a physical reference object.
-            </p>
-
-            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 text-xs space-y-1.5">
-              <p className="font-bold text-blue-900">Reference Standard Protocol:</p>
-              <p className="text-blue-800">• Standard ISO/IEC 7810 Card: 85.60 mm width × 53.98 mm height.</p>
-              <p className="text-blue-800">• Table I/II Minimum: 4.0 mm for 200g-1kg Net Quantity.</p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Inspector Font Height Compliance:
-              </label>
-              <select className="w-full text-xs border border-gray-300 rounded-lg p-2">
-                <option>Compliant (&gt;= 4.0 mm for 200g-1kg)</option>
-                <option>Compliant (&gt;= 2.0 mm for 50g-200g)</option>
-                <option>Non-Compliant (&lt; statutory minimum)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Field Officer Endorsement:
-              </label>
-              <textarea
-                value={officerNotes}
-                onChange={(e) => setOfficerNotes(e.target.value)}
-                placeholder="e.g., Physical font measured 4.2mm with vernier caliper across front and side panels."
-                className="w-full text-xs border border-gray-300 rounded-lg p-2 h-16"
+              {/* Hidden Inputs */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleFileUpload(e, activePanelKey)}
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => handleFileUpload(e, activePanelKey)}
               />
             </div>
 
-            <div className="flex space-x-2 pt-2">
-              <button
-                onClick={() => {
-                  setHitlVerified(true)
-                  setShowHitlModal(false)
-                  toast.success('Rule 7 verification recorded.')
-                }}
-                className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors"
-              >
-                Endorse &amp; Record Verification
-              </button>
-              <button
-                onClick={() => setShowHitlModal(false)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-            </div>
+            {/* Scan Trigger Button */}
+            <button
+              onClick={handleExecuteScan}
+              disabled={isScanning || Object.values(panels).every(p => p.file === null)}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white font-black text-sm rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              {isScanning ? (
+                <>
+                  <RefreshCw className="h-5 w-5 animate-spin" />
+                  <span>Extracting Declarations & Evaluating LMPC Rules...</span>
+                </>
+              ) : (
+                <>
+                  <ScanIcon className="h-5 w-5" />
+                  <span>Run Legal Metrology Compliance Audit</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
-      )}
+
+        {/* Right Column: AI Extraction & Declaration Detection Matrix */}
+        <div className="lg:col-span-6 space-y-4">
+          {scanResult ? (
+            <div className="space-y-4">
+              {/* Overall Compliance Verdict Banner */}
+              <div className={`p-5 rounded-2xl border text-white shadow-md flex items-center justify-between ${
+                scanResult.status === 'PASS' ? 'bg-gradient-to-r from-emerald-800 to-teal-900 border-emerald-500' :
+                scanResult.status === 'FAIL' ? 'bg-gradient-to-r from-red-900 to-rose-950 border-red-600' :
+                'bg-gradient-to-r from-amber-800 to-orange-950 border-amber-600'
+              }`}>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    {scanResult.status === 'PASS' ? <CheckCircle2 className="h-6 w-6 text-emerald-300" /> : <AlertTriangle className="h-6 w-6 text-red-300" />}
+                    <h3 className="text-lg font-black tracking-wide">
+                      {scanResult.status === 'PASS' ? 'COMPLIANT PACKAGE' : scanResult.status === 'FAIL' ? 'NON-COMPLIANT' : 'REVIEW REQUIRED'}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-white/80 mt-1">
+                    {scanResult.violations.length === 0
+                      ? 'All mandatory Legal Metrology (Packaged Commodities) declarations verified.'
+                      : `${scanResult.violations.length} statutory non-compliance defect(s) detected.`}
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] uppercase text-white/70 block">AI Confidence</span>
+                  <span className="text-xl font-black">{Math.round(scanResult.overall_confidence * 100)}%</span>
+                </div>
+              </div>
+
+              {/* Declaration Detection Matrix */}
+              <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Mandatory Declaration Detection Matrix</h3>
+                    <p className="text-[11px] text-gray-500">Legal Metrology (Packaged Commodities) Rules, 2011</p>
+                  </div>
+                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md">
+                    Rule 6 Checklist
+                  </span>
+                </div>
+
+                <div className="divide-y divide-gray-100">
+                  {mandatoryDeclarationsList.map((dec, idx) => (
+                    <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-gray-900">{dec.name}</span>
+                          <span className="text-[10px] text-gray-400 font-mono">({dec.rule})</span>
+                        </div>
+                        <p className="text-[11px] text-gray-600 mt-0.5 truncate max-w-[280px]">
+                          {dec.value}
+                        </p>
+                      </div>
+
+                      <div>
+                        {dec.detected ? (
+                          <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full flex items-center space-x-1">
+                            <CheckCircle className="h-3 w-3" />
+                            <span>✓ Detected</span>
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 bg-red-100 text-red-800 font-bold text-[10px] rounded-full flex items-center space-x-1">
+                            <XCircle className="h-3 w-3" />
+                            <span>❌ Missing</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Human-in-the-Loop Violation Cards */}
+              {scanResult.violations.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-black text-gray-900 flex items-center space-x-2">
+                    <ShieldAlert className="h-4 w-4 text-red-600" />
+                    <span>Statutory Violation Cards (Inspector Verification Required)</span>
+                  </h3>
+
+                  {scanResult.violations.map((v, idx) => {
+                    const currentStatus = verificationStates[v.rule_code] || 'PENDING'
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-white rounded-2xl p-4 border-2 border-red-200 shadow-sm space-y-3"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="px-2 py-0.5 bg-red-100 text-red-800 font-bold text-xs rounded">
+                                {v.rule_code}
+                              </span>
+                              <span className="text-xs font-bold text-gray-900">{v.declaration}</span>
+                            </div>
+                            <p className="text-xs text-red-700 font-semibold mt-1">{v.reason}</p>
+                            {v.suggested_correction && (
+                              <p className="text-[11px] text-gray-600 mt-0.5">
+                                <span className="font-bold">Required Standard:</span> {v.suggested_correction}
+                              </p>
+                            )}
+                          </div>
+
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
+                            currentStatus === 'CONFIRMED' ? 'bg-red-600 text-white' :
+                            currentStatus === 'REJECTED' ? 'bg-gray-200 text-gray-700' :
+                            currentStatus === 'NEEDS_REVIEW' ? 'bg-amber-500 text-white' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {currentStatus}
+                          </span>
+                        </div>
+
+                        {/* Inspector Action Buttons */}
+                        <div className="pt-2 border-t border-gray-100 flex items-center justify-end space-x-2 text-xs">
+                          <span className="text-[11px] text-gray-500 mr-auto font-medium">Officer Decision:</span>
+                          <button
+                            onClick={() => handleVerifyViolation(v.rule_code, 'CONFIRMED')}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                              currentStatus === 'CONFIRMED' ? 'bg-red-700 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'
+                            }`}
+                          >
+                            [CONFIRM]
+                          </button>
+                          <button
+                            onClick={() => handleVerifyViolation(v.rule_code, 'REJECTED')}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                              currentStatus === 'REJECTED' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            [REJECT]
+                          </button>
+                          <button
+                            onClick={() => handleVerifyViolation(v.rule_code, 'NEEDS_REVIEW')}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                              currentStatus === 'NEEDS_REVIEW' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            }`}
+                          >
+                            [NEEDS REVIEW]
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl p-10 border border-gray-200 text-center space-y-3">
+              <ScanIcon className="h-12 w-12 text-blue-400 mx-auto" />
+              <h3 className="font-bold text-base text-gray-800">No Package Analyzed Yet</h3>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                Capture package photographs on the left and click &quot;Run Legal Metrology Compliance Audit&quot; to inspect mandatory declarations and rule compliance.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

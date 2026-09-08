@@ -140,6 +140,126 @@ export interface ManufacturerDashboardData {
   inspections: any[]
 }
 
+export interface Entity {
+  entity_id: string
+  registration_no: string
+  firm_name: string
+  entity_type: 'Manufacturer' | 'Packer' | 'Importer' | 'Manufacturer & Packer' | 'Wholesaler / Distributor'
+  establishment_address: string
+  district: string
+  state: string
+  pincode: string
+  registered_commodities: string[]
+  license_status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'UNDER_REVIEW'
+  registration_date: string
+  valid_upto: string
+  contact_email?: string
+  contact_phone?: string
+  compliance_rating: number
+  total_inspections: number
+  violations_count: number
+  repeat_offender: boolean
+}
+
+export interface RuleVersion {
+  rule_id: string
+  rule_code: string
+  rule_name: string
+  act_reference: string
+  section_or_rule: string
+  amendment_version: string
+  effective_date: string
+  commodity_category: string
+  requirement_description: string
+  mandatory: boolean
+  applicable_conditions?: string[]
+  penalty_clause: string
+  status: 'ACTIVE' | 'SUPERSEDED' | 'DRAFT'
+}
+
+export interface InspectionSession {
+  session_id: string
+  inspector_id: string
+  inspector_name: string
+  jurisdiction_district: string
+  jurisdiction_state: string
+  inspection_type: 'Routine inspection' | 'Surprise inspection' | 'Complaint-based inspection' | 'Follow-up inspection' | 'Registration-related inspection'
+  gps_location: {
+    latitude: number
+    longitude: number
+    accuracy_meters?: number
+    address_resolved?: string
+  }
+  entity_id?: string
+  entity_name?: string
+  entity_reg_no?: string
+  entity_type?: string
+  premises_address?: string
+  packages_inspected: number
+  compliant_count: number
+  review_required_count: number
+  non_compliant_count: number
+  violations_detected: number
+  physical_measurements_recorded: number
+  seizures_count: number
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'SUBMITTED_TO_SUPERVISOR' | 'APPROVED' | 'RETURNED'
+  officer_observations?: string
+  action_recommended: 'NONE' | 'WARNING_NOTICE' | 'STATUTORY_CHALLAN' | 'SEIZURE_OF_GOODS' | 'PROSECUTION'
+  started_at: string
+  completed_at?: string
+  measurements?: QuantityMeasurement[]
+  seizures?: SeizureRecord[]
+}
+
+export interface QuantityMeasurement {
+  measurement_id: string
+  session_id: string
+  sample_no: string
+  product_name: string
+  declared_quantity: number
+  declared_unit: string
+  actual_quantity: number
+  difference: number
+  permissible_error_limit: number
+  instrument_type: string
+  instrument_certificate_no: string
+  result: 'PASS' | 'FAIL'
+  reason: string
+  created_at: string
+}
+
+export interface SeizureRecord {
+  seizure_id: string
+  session_id: string
+  scan_id?: string
+  entity_name: string
+  entity_reg_no?: string
+  product_name: string
+  quantity_seized_units: number
+  unit_of_measure: string
+  estimated_stock_value: number
+  reason_for_seizure: string
+  statutory_act_section: string
+  evidence_photos: string[]
+  custody_location: string
+  custodian_officer: string
+  witness_details?: string
+  status: 'SEIZED_IN_CUSTODY' | 'RELEASED_ON_BOND' | 'COMPOUNDED_DISPOSED' | 'CONFISCATED_COURT'
+  created_at: string
+  notes?: string
+}
+
+export interface DeclarationCheckItem {
+  id: string
+  declaration_name: string
+  rule_citation: string
+  is_detected: boolean
+  detected_value?: string
+  expected_format: string
+  status: 'DETECTED' | 'MISSING' | 'NON_STANDARD' | 'NOT_APPLICABLE'
+  confidence: number
+}
+
 const api = axios.create({
   baseURL: '/api/v1',
   timeout: 120000,
@@ -271,5 +391,114 @@ export const loginUser = async (email: string, password: string): Promise<{ succ
 
 export const logoutUser = async (user?: any): Promise<{ success: boolean; message: string }> => {
   const response = await api.post('/auth/logout', { user })
+  return response.data
+}
+
+// Registered Entities API
+export const fetchEntities = async (query?: string, district?: string, entityType?: string): Promise<{ success: boolean; count: number; data: Entity[] }> => {
+  try {
+    const response = await api.get('/entities', { params: { query, district, entity_type: entityType } })
+    return response.data
+  } catch (error) {
+    console.error('[API] Error fetching entities:', error)
+    return { success: false, count: 0, data: [] }
+  }
+}
+
+export const fetchEntityByIdentifier = async (identifier: string): Promise<{ success: boolean; data?: Entity; message?: string }> => {
+  try {
+    const response = await api.get(`/entities/${encodeURIComponent(identifier)}`)
+    return response.data
+  } catch (error) {
+    console.error('[API] Error fetching entity by ID/RegNo:', error)
+    return { success: false, message: 'Entity not found' }
+  }
+}
+
+export const createEntity = async (entityData: Partial<Entity>): Promise<{ success: boolean; data: Entity }> => {
+  const response = await api.post('/entities', entityData)
+  return response.data
+}
+
+// Rules & Versions API
+export const fetchRules = async (status?: string, category?: string): Promise<{ success: boolean; count: number; data: RuleVersion[] }> => {
+  try {
+    const response = await api.get('/rules', { params: { status, category } })
+    return response.data
+  } catch (error) {
+    console.error('[API] Error fetching rule versions:', error)
+    return { success: false, count: 0, data: [] }
+  }
+}
+
+export const createRule = async (ruleData: Partial<RuleVersion>): Promise<{ success: boolean; data: RuleVersion }> => {
+  const response = await api.post('/rules', ruleData)
+  return response.data
+}
+
+// Inspection Sessions API
+export const startInspectionSession = async (sessionData: Partial<InspectionSession>): Promise<{ success: boolean; data: InspectionSession }> => {
+  const response = await api.post('/inspections/start', sessionData)
+  return response.data
+}
+
+export const fetchInspectionSessions = async (status?: string, inspectorId?: string, entityName?: string): Promise<{ success: boolean; count: number; data: InspectionSession[] }> => {
+  try {
+    const response = await api.get('/inspections', { params: { status, inspector_id: inspectorId, entity_name: entityName } })
+    return response.data
+  } catch (error) {
+    console.error('[API] Error fetching inspection sessions:', error)
+    return { success: false, count: 0, data: [] }
+  }
+}
+
+export const fetchInspectionSessionDetails = async (sessionId: string): Promise<{ success: boolean; data: InspectionSession }> => {
+  const response = await api.get(`/inspections/${sessionId}`)
+  return response.data
+}
+
+// Physical Quantity Verification API
+export const recordQuantityMeasurement = async (measurementData: {
+  session_id?: string
+  sample_no?: string
+  product_name: string
+  declared_quantity: number
+  declared_unit: string
+  actual_quantity: number
+  instrument_type?: string
+  instrument_certificate_no?: string
+}): Promise<{ success: boolean; data: QuantityMeasurement }> => {
+  const response = await api.post('/inspections/measurement', measurementData)
+  return response.data
+}
+
+export const fetchMeasurements = async (sessionId?: string): Promise<{ success: boolean; count: number; data: QuantityMeasurement[] }> => {
+  try {
+    const response = await api.get('/inspections/measurements/list', { params: { session_id: sessionId } })
+    return response.data
+  } catch (error) {
+    console.error('[API] Error fetching measurements:', error)
+    return { success: false, count: 0, data: [] }
+  }
+}
+
+// Enforcement & Seizures API
+export const createSeizureMemo = async (seizureData: Partial<SeizureRecord>): Promise<{ success: boolean; data: SeizureRecord }> => {
+  const response = await api.post('/enforcement/seizure', seizureData)
+  return response.data
+}
+
+export const fetchSeizures = async (sessionId?: string, status?: string): Promise<{ success: boolean; count: number; data: SeizureRecord[] }> => {
+  try {
+    const response = await api.get('/enforcement/seizures', { params: { session_id: sessionId, status } })
+    return response.data
+  } catch (error) {
+    console.error('[API] Error fetching seizures:', error)
+    return { success: false, count: 0, data: [] }
+  }
+}
+
+export const updateSeizureStatus = async (seizureId: string, status: string, notes?: string): Promise<{ success: boolean; data: SeizureRecord }> => {
+  const response = await api.put(`/enforcement/seizures/${seizureId}/status`, { status, notes })
   return response.data
 }

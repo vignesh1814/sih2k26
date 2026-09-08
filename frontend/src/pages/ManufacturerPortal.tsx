@@ -229,7 +229,7 @@ const ManufacturerPortal: React.FC = () => {
       {/* TAB 1: RECEIVED CHALLANS & PAYMENT */}
       {activeTab === 'challans' && (
         <div className="space-y-4">
-          {data?.challans.map(ch => (
+          {data?.challans.map((ch: Challan) => (
             <div key={ch.challan_id} className={`bg-white rounded-2xl border shadow-sm p-5 sm:p-6 transition-all ${
               ch.status === 'PAID' ? 'border-emerald-200 bg-emerald-50/20' : 'border-gray-200 hover:border-emerald-300'
             }`}>
@@ -276,7 +276,7 @@ const ManufacturerPortal: React.FC = () => {
                     <span>Statutory Rule Violations Cited:</span>
                   </p>
                   <ul className="space-y-1 text-rose-800">
-                    {ch.violation_codes.map((v, i) => (
+                    {ch.violation_codes.map((v: string, i: number) => (
                       <li key={i}>• {v}</li>
                     ))}
                   </ul>
@@ -288,7 +288,7 @@ const ManufacturerPortal: React.FC = () => {
                     <span>Legal Provisions Cited:</span>
                   </p>
                   <ul className="space-y-1 text-slate-700">
-                    {ch.act_sections.map((s, i) => (
+                    {ch.act_sections.map((s: string, i: number) => (
                       <li key={i}>• {s}</li>
                     ))}
                   </ul>
