@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-09-08 19:56:46",
+  "total_samples": 6,
+  "overall_accuracy_pct": 100.0,
+  "precision_pct": 100.0,
+  "recall_pct": 100.0,
+  "f1_score": 1.0,
+  "avg_ocr_latency_sec": 3.245,
+  "avg_extraction_latency_ms": 0.167,
+  "avg_compliance_latency_ms": 72.203,
+  "field_metrics": {
+    "generic_name": {
+      "recall_pct": 100.0
+    },
+    "net_quantity": {
+      "recall_pct": 100.0
+    },
+    "unit": {
+      "recall_pct": 83.33
+    },
+    "mrp": {
+      "recall_pct": 83.33
+    },
+    "mfg_date": {
+      "recall_pct": 100.0
+    },
+    "manufacturer": {
+      "recall_pct": 100.0
+    },
+    "consumer_care": {
+      "recall_pct": 100.0
+    }
+  }
+}

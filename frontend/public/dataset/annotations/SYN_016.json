@@ -1,0 +1,104 @@
+{
+  "image_id": "SYN_016",
+  "metadata": {
+    "packaging_type": "carton",
+    "capture_angle": "front_pdp",
+    "has_reference_marker": false
+  },
+  "bounding_boxes": [
+    {
+      "label": "PDP",
+      "bbox_xyxy": [
+        20,
+        10,
+        780,
+        480
+      ],
+      "transcription": "Principal Display Panel"
+    },
+    {
+      "label": "Generic_Name",
+      "bbox_xyxy": [
+        40,
+        28,
+        301,
+        52
+      ],
+      "transcription": "Generic Name: Roasted Cashews"
+    },
+    {
+      "label": "NetQty_Area",
+      "bbox_xyxy": [
+        40,
+        68,
+        211,
+        92
+      ],
+      "transcription": "Net Quantity: 50 kg"
+    },
+    {
+      "label": "MRP_Area",
+      "bbox_xyxy": [
+        40,
+        108,
+        400,
+        132
+      ],
+      "transcription": "MRP: Rs. 153.24 (Inclusive of all taxes)"
+    },
+    {
+      "label": "USP_Area",
+      "bbox_xyxy": [
+        40,
+        128,
+        292,
+        152
+      ],
+      "transcription": "Unit Sale Price: Rs. 3.06/kg"
+    },
+    {
+      "label": "MfgDate_Area",
+      "bbox_xyxy": [
+        40,
+        148,
+        193,
+        172
+      ],
+      "transcription": "Mfg Date: 06/2023"
+    },
+    {
+      "label": "Address_Area",
+      "bbox_xyxy": [
+        40,
+        188,
+        643,
+        212
+      ],
+      "transcription": "Mfd by: Pinnacle Foods Pvt Ltd, Plot 52, Sector 4, New Delhi, Delhi"
+    },
+    {
+      "label": "ConsumerCare_Area",
+      "bbox_xyxy": [
+        40,
+        228,
+        490,
+        252
+      ],
+      "transcription": "Consumer Care: 1800-890-4422 | support@pinnacle.in"
+    }
+  ],
+  "declarations": {
+    "manufacturer_name": "Pinnacle Foods Pvt Ltd",
+    "manufacturer_address": "Plot 52, Sector 4, New Delhi, Delhi",
+    "generic_name": "Roasted Cashews",
+    "net_quantity_value": 50,
+    "net_quantity_unit": "kg",
+    "mfg_month_year": "06/2023",
+    "mrp_value": 153.24,
+    "unit_sale_price": 3.06
+  },
+  "compliance_ground_truth": {
+    "overall_status": "PASS",
+    "violations": []
+  }
+}
