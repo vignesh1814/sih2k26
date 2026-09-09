@@ -23,18 +23,31 @@ export class GeminiVisionService {
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
-    // 1. If Gemini API Key is available, invoke Gemini 1.5 Flash Vision Multimodal API directly
+    // 1. If Gemini API Key is available, invoke Gemini 2.5 Flash / 2.0 Flash / 1.5 Flash Vision API
     if (apiKey) {
-      try {
-        const geminiResult = await this.callGeminiVisionAPI(validPaths, apiKey);
-        if (geminiResult && geminiResult.declarations) {
-          return {
-            ...geminiResult,
-            analysis_mode: 'GEMINI_1_5_VISION'
-          };
+      // Primary model: gemini-2.5-flash, followed by gemini-2.0-flash, gemini-1.5-flash
+      const candidateModels = [
+        process.env.GEMINI_MODEL,
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash'
+      ].filter(Boolean);
+
+      // Remove duplicates
+      const uniqueModels = [...new Set(candidateModels)];
+
+      for (const model of uniqueModels) {
+        try {
+          const geminiResult = await this.callGeminiVisionAPI(validPaths, apiKey, model);
+          if (geminiResult && geminiResult.declarations) {
+            return {
+              ...geminiResult,
+              analysis_mode: `GEMINI_VISION_${model.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`
+            };
+          }
+        } catch (geminiErr) {
+          console.warn(`[GeminiVisionService] Direct Gemini API call with model '${model}' failed: ${geminiErr.message}. Trying next candidate.`);
         }
-      } catch (geminiErr) {
-        console.warn(`[GeminiVisionService] Direct Gemini API call failed (${geminiErr.message}). Using local engine fallback.`);
       }
     }
 
@@ -66,7 +79,7 @@ export class GeminiVisionService {
   /**
    * Directly sends image parts to Gemini Vision API with comprehensive LMPC statutory parsing prompt.
    */
-  static async callGeminiVisionAPI(imagePaths, apiKey) {
+  static async callGeminiVisionAPI(imagePaths, apiKey, modelName = 'gemini-2.5-flash') {
     const contentsParts = [];
 
     const prompt = `You are the Official Legal Metrology (LMPC) Compliance AI Engine for the Department of Consumer Affairs, Government of India.
@@ -130,7 +143,7 @@ Return a single JSON object strictly matching this schema:
       });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
