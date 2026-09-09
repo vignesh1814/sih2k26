@@ -25,11 +25,18 @@ import { fetchScans, issueChallan } from '../services/api'
 interface Report {
   id: string
   scan_id: string
+  session_id?: string
+  entity_name?: string
+  entity_type?: string
+  premises_address?: string
+  inspection_type?: string
   status: 'PASS' | 'FAIL' | 'NEEDS_REVIEW' | 'SETTLED'
   product_name: string
   manufacturer: string
   net_quantity: string
   mrp: string
+  unit_sale_price?: string
+  consumer_care?: string
   violations_count: number
   generated_at: string
   pdf_url: string
@@ -74,11 +81,18 @@ const Reports: React.FC = () => {
             return {
               id: s.scan_id || String(idx + 1),
               scan_id: s.scan_id || `SCAN-${idx + 1}`,
+              session_id: s.session_id,
+              entity_name: s.entity_name || s.session?.entity_name || decl.manufacturer || 'Establishment Under Audit',
+              entity_type: s.entity_type || s.session?.entity_type || 'Retail Store / Establishment',
+              premises_address: s.premises_address || s.session?.premises_address,
+              inspection_type: s.inspection_type || s.session?.inspection_type || 'Routine Inspection',
               status: s.status === 'SETTLED' ? 'SETTLED' : (s.status === 'PASS' ? 'PASS' : (s.status === 'FAIL' ? 'FAIL' : 'NEEDS_REVIEW')),
               product_name: decl.generic_name || 'Packaged Commodity',
               manufacturer: decl.manufacturer || 'Unknown Manufacturer',
               net_quantity: decl.net_quantity ? `${decl.net_quantity} ${decl.unit || ''}`.trim() : 'N/A',
               mrp: decl.mrp_text || (decl.mrp ? `₹${decl.mrp}` : 'N/A'),
+              unit_sale_price: decl.unit_sale_price ? `₹${decl.unit_sale_price} / ${decl.unit || 'g'}` : undefined,
+              consumer_care: decl.consumer_care,
               violations_count: Array.isArray(s.violations) ? s.violations.length : 0,
               generated_at: s.created_at || new Date().toISOString(),
               pdf_url: s.report_download_url || `/api/v1/report/${s.scan_id}/download`,
@@ -481,16 +495,28 @@ const Reports: React.FC = () => {
             </div>
 
             <div className="bg-gray-50 p-4 rounded-lg space-y-2 border border-gray-200">
+              {viewingReport.entity_name && (
+                <div className="flex justify-between border-b border-gray-200 pb-1.5 bg-blue-50/50 p-2 rounded">
+                  <span className="text-gray-600 font-semibold">Inspected Establishment:</span>
+                  <span className="font-bold text-blue-900">{viewingReport.entity_name}</span>
+                </div>
+              )}
+              {viewingReport.premises_address && (
+                <div className="flex justify-between text-[11px] text-gray-600">
+                  <span className="text-gray-500">Premises Address:</span>
+                  <span className="font-medium text-gray-800 text-right max-w-[260px] truncate">{viewingReport.premises_address}</span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-gray-500">Scan Session ID:</span>
+                <span className="text-gray-500">Audit Reference / Scan ID:</span>
                 <span className="font-mono font-bold text-gray-900">{viewingReport.scan_id}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Commodity:</span>
+                <span className="text-gray-500">Commodity Name:</span>
                 <span className="font-bold text-gray-900">{viewingReport.product_name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Manufacturer:</span>
+                <span className="text-gray-500">Manufacturer / Packer:</span>
                 <span className="font-bold text-gray-900">{viewingReport.manufacturer}</span>
               </div>
               <div className="flex justify-between">
@@ -498,15 +524,27 @@ const Reports: React.FC = () => {
                 <span className="font-bold text-gray-900">{viewingReport.net_quantity}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Maximum Retail Price:</span>
+                <span className="text-gray-500">Maximum Retail Price (MRP):</span>
                 <span className="font-bold text-gray-900">{viewingReport.mrp}</span>
               </div>
+              {viewingReport.unit_sale_price && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Unit Sale Price (USP):</span>
+                  <span className="font-bold text-indigo-700">{viewingReport.unit_sale_price}</span>
+                </div>
+              )}
+              {viewingReport.consumer_care && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Consumer Care Helpline:</span>
+                  <span className="font-medium text-emerald-800 text-right max-w-[250px] truncate">{viewingReport.consumer_care}</span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-gray-500">Status:</span>
+                <span className="text-gray-500">Statutory Status:</span>
                 <StatusBadge status={viewingReport.status} />
               </div>
               <div className="pt-2 border-t border-gray-200">
-                <span className="text-gray-500 block mb-1">Cryptographic Evidence SHA-256 Hash:</span>
+                <span className="text-gray-500 block mb-1">Cryptographic Evidence SHA-256 Digest:</span>
                 <span className="font-mono text-[11px] text-gray-800 break-all bg-white p-1.5 rounded border block">
                   {viewingReport.evidence_hash}
                 </span>

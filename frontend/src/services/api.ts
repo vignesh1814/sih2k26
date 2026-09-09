@@ -274,9 +274,12 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-export const scanPackage = async (file: File): Promise<ScanResponse> => {
+export const scanPackage = async (file: File, sessionId?: string): Promise<ScanResponse> => {
   const formData = new FormData()
   formData.append('file', file)
+  if (sessionId) {
+    formData.append('session_id', sessionId)
+  }
 
   try {
     const response = await api.post<ScanResponse>('/scan', formData, {
@@ -291,12 +294,15 @@ export const scanPackage = async (file: File): Promise<ScanResponse> => {
   }
 }
 
-export const scanMultiPackages = async (panels: Array<{ panel: string; file: File }>): Promise<ScanResponse> => {
+export const scanMultiPackages = async (panels: Array<{ panel: string; file: File }>, sessionId?: string): Promise<ScanResponse> => {
   const formData = new FormData()
   panels.forEach(p => {
     formData.append('files', p.file)
     formData.append('panel_names', p.panel)
   })
+  if (sessionId) {
+    formData.append('session_id', sessionId)
+  }
 
   try {
     const response = await api.post<ScanResponse>('/scan-multi', formData, {
@@ -463,6 +469,14 @@ export const fetchInspectionSessions = async (status?: string, inspectorId?: str
 
 export const fetchInspectionSessionDetails = async (sessionId: string): Promise<{ success: boolean; data: InspectionSession }> => {
   const response = await api.get(`/inspections/${sessionId}`)
+  return response.data
+}
+
+export const closeInspectionSession = async (
+  sessionId: string,
+  data?: { officer_observations?: string; action_recommended?: string; inspector_name?: string }
+): Promise<{ success: boolean; message: string; session: InspectionSession }> => {
+  const response = await api.post(`/inspections/${sessionId}/close`, data || {})
   return response.data
 }
 

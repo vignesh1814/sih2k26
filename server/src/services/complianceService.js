@@ -126,37 +126,29 @@ export class ComplianceService {
     if (decl.mrp && decl.net_quantity && decl.unit) {
       const qVal = parseFloat(decl.net_quantity);
       if (!isNaN(qVal) && qVal > 0) {
-        // Calculate expected USP
         const u = decl.unit.toLowerCase().trim();
-        let referenceUnit = 'g';
-        let factor = 1.0;
+        const baseUspPerUnit = decl.mrp / qVal; // per single unit (per 1g, 1ml, 1 piece)
+        
+        // Multi-base candidates (e.g. per 1g, per 10g, per 100g, per 1kg, per 100ml, per 1L)
+        const candidates = [
+          { value: baseUspPerUnit, label: u },
+          { value: baseUspPerUnit * 10, label: `10${u}` },
+          { value: baseUspPerUnit * 100, label: `100${u}` },
+          { value: baseUspPerUnit * 1000, label: u === 'g' ? 'kg' : (u === 'ml' ? 'l' : `1000${u}`) }
+        ];
 
-        if (['g', 'gm', 'gms'].includes(u)) {
-          if (qVal >= 1000) { referenceUnit = 'kg'; factor = 1000.0; }
-          else { referenceUnit = 'g'; factor = 1.0; }
-        } else if (['kg', 'kgs'].includes(u)) {
-          referenceUnit = 'kg';
-          factor = 1.0;
-        } else if (['ml', 'ml.'].includes(u)) {
-          if (qVal >= 1000) { referenceUnit = 'l'; factor = 1000.0; }
-          else { referenceUnit = 'ml'; factor = 1.0; }
-        } else if (['l', 'ltr', 'ltrs'].includes(u)) {
-          referenceUnit = 'l';
-          factor = 1.0;
-        }
-
-        const calculatedUsp = (decl.mrp / qVal) * factor;
-
-        // If declared USP exists, check tolerance
+        // If declared USP exists, check against any valid statutory candidate
         if (decl.unit_sale_price) {
-          const diff = Math.abs(decl.unit_sale_price - calculatedUsp);
-          if (diff > 0.5) {
+          const matched = candidates.some(c => Math.abs(decl.unit_sale_price - c.value) <= Math.max(0.2, c.value * 0.05));
+          if (!matched) {
+            const expectedDefault = qVal >= 1000 ? (baseUspPerUnit * 1000) : (qVal > 100 ? (baseUspPerUnit * 100) : baseUspPerUnit);
+            const expectedUnit = qVal >= 1000 ? (u === 'g' ? 'kg' : 'l') : (qVal > 100 ? `100${u}` : u);
             violations.push({
               rule_code: "Rule 6(11)",
-              declaration: "Unit Sale Price (USP) Mathematical Discrepancy",
-              reason: `Declared USP (Rs. ${decl.unit_sale_price}/${referenceUnit}) does not match computed value (Rs. ${calculatedUsp.toFixed(2)}/${referenceUnit})`,
-              severity: "CRITICAL",
-              suggested_correction: `Correct Unit Sale Price to Rs. ${calculatedUsp.toFixed(2)} per ${referenceUnit}`
+              declaration: "Unit Sale Price (USP) Discrepancy",
+              reason: `Declared USP (Rs. ${decl.unit_sale_price}) differs from statutory computed price (Rs. ${expectedDefault.toFixed(2)} per ${expectedUnit})`,
+              severity: "WARNING",
+              suggested_correction: `Statutory USP should be Rs. ${expectedDefault.toFixed(2)} per ${expectedUnit} (or Rs. ${baseUspPerUnit.toFixed(2)} per ${u})`
             });
           }
         }
@@ -178,15 +170,16 @@ export class ComplianceService {
     }
 
     // Overall Status Determination
-    const criticalCount = violations.filter(v => v.severity === 'CRITICAL').length;
+    // Even if there is one rule not satisfied, mark as FAIL / Statutory Violation
     let status = 'PASS';
-    if (criticalCount > 0) {
+    if (violations.length > 0) {
       status = 'FAIL';
-    } else if (violations.length > 0) {
-      status = 'NEEDS_REVIEW';
     }
 
-    return { status, violations };
+    return {
+      status,
+      violations
+    };
   }
 
   /**

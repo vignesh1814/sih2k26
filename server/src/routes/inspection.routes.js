@@ -2,7 +2,11 @@ import express from 'express';
 import InspectionSession from '../models/InspectionSession.js';
 import Measurement from '../models/Measurement.js';
 import { Scan } from '../models/Scan.js';
+import { Report } from '../models/Report.js';
+import { AuditLog } from '../models/AuditLog.js';
+import { ReportService } from '../services/reportService.js';
 import { inMemoryStore, isDbConnected } from '../db.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 
@@ -289,6 +293,148 @@ router.get('/measurements/list', async (req, res) => {
     return res.json({ success: true, count: measurements.length, data: measurements });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/inspections/:session_id/close or /complete - Finalize inspection session and update reports
+router.post(['/:session_id/close', '/:session_id/complete'], async (req, res) => {
+  try {
+    const { session_id } = req.params;
+    const {
+      officer_observations,
+      action_recommended,
+      inspector_name = 'Field Inspector'
+    } = req.body;
+
+    let session = null;
+    let scans = [];
+    let measurements = [];
+
+    if (isDbConnected()) {
+      session = await InspectionSession.findOne({ session_id });
+      if (session) {
+        scans = await Scan.find({ session_id }).lean();
+        measurements = await Measurement.find({ session_id }).lean();
+      }
+    } else {
+      session = (inMemoryStore.sessions || []).find(s => s.session_id === session_id);
+      scans = (inMemoryStore.scans || []).filter(s => s.session_id === session_id);
+      measurements = (inMemoryStore.measurements || []).filter(m => m.session_id === session_id);
+    }
+
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Inspection session not found' });
+    }
+
+    // Compute exact inspection aggregates
+    const packagesInspected = scans.length;
+    const compliantCount = scans.filter(s => s.status === 'PASS').length;
+    const nonCompliantCount = scans.filter(s => s.status === 'FAIL').length;
+    const reviewRequiredCount = scans.filter(s => s.status === 'NEEDS_REVIEW').length;
+    const measurementViolations = measurements.filter(m => m.result === 'FAIL').length;
+    
+    let totalViolations = 0;
+    scans.forEach(s => {
+      if (Array.isArray(s.violations)) totalViolations += s.violations.length;
+    });
+    totalViolations += measurementViolations;
+
+    const recommendedAction = action_recommended || (nonCompliantCount > 0 || measurementViolations > 0 ? 'STATUTORY_CHALLAN' : 'NONE');
+    const observations = officer_observations || session.officer_observations || (
+      nonCompliantCount > 0 
+        ? `Found ${nonCompliantCount} non-compliant packages with ${totalViolations} statutory defect(s). Enforcement action recommended.`
+        : `All ${packagesInspected || 'inspected'} commodity packages verified compliant with PCR 2011.`
+    );
+
+    // Update session object
+    session.status = 'COMPLETED';
+    session.completed_at = new Date();
+    session.packages_inspected = packagesInspected;
+    session.compliant_count = compliantCount;
+    session.non_compliant_count = nonCompliantCount;
+    session.review_required_count = reviewRequiredCount;
+    session.violations_detected = totalViolations;
+    session.physical_measurements_recorded = measurements.length;
+    session.officer_observations = observations;
+    session.action_recommended = recommendedAction;
+
+    if (isDbConnected()) {
+      await session.save();
+    }
+
+    // Ensure all scans from this session have valid Report entries for the Reports page
+    let reportsCreated = 0;
+    for (const scan of scans) {
+      try {
+        const existingReport = isDbConnected() 
+          ? await Report.findOne({ scan_id: scan.scan_id })
+          : (inMemoryStore.reports || []).find(r => r.scan_id === scan.scan_id);
+
+        if (!existingReport) {
+          const { pdf_url, evidence_hash } = await ReportService.generateReport({
+            scanId: scan.scan_id,
+            scanData: scan,
+            officerName: inspector_name || session.inspector_name || 'Field Inspector',
+            station: `${session.jurisdiction_district || 'District'} Legal Metrology Wing`,
+            notes: `Inspection Session: ${session.session_id} - ${session.entity_name}`
+          });
+
+          const reportDoc = {
+            report_id: uuidv4(),
+            scan_id: scan.scan_id,
+            officer_name: inspector_name || session.inspector_name || 'Field Inspector',
+            station_jurisdiction: `${session.jurisdiction_district || 'District'} Legal Metrology Wing`,
+            pdf_url,
+            evidence_hash,
+            status: 'COMPLETED',
+            generated_at: new Date(),
+            notes: `Session: ${session.session_id}`
+          };
+
+          if (isDbConnected()) {
+            await Report.create(reportDoc);
+          } else {
+            inMemoryStore.reports = inMemoryStore.reports || [];
+            inMemoryStore.reports.unshift(reportDoc);
+          }
+          reportsCreated++;
+        }
+      } catch (repErr) {
+        console.warn(`[Report Sync Error for ${scan.scan_id}]:`, repErr.message);
+      }
+    }
+
+    // Record Audit Log
+    const auditDoc = {
+      timestamp: new Date(),
+      user_name: inspector_name || session.inspector_name || 'Field Inspector',
+      user_role: 'INSPECTOR',
+      action: 'CLOSE_INSPECTION_SESSION',
+      resource: `SESSION:${session_id}`,
+      details: `Closed inspection session for ${session.entity_name}: ${packagesInspected} packages audited (${nonCompliantCount} non-compliant, ${totalViolations} violations).`,
+      status: 'SUCCESS',
+      ip_address: req.ip || '127.0.0.1'
+    };
+
+    if (isDbConnected()) {
+      try { await AuditLog.create(auditDoc); } catch (e) {}
+    } else {
+      inMemoryStore.auditLogs = inMemoryStore.auditLogs || [];
+      inMemoryStore.auditLogs.unshift(auditDoc);
+    }
+
+    return res.json({
+      success: true,
+      message: `Inspection session ${session_id} successfully closed and reports updated.`,
+      session,
+      packages_inspected: packagesInspected,
+      non_compliant_count: nonCompliantCount,
+      violations_detected: totalViolations,
+      reports_created_or_synced: reportsCreated
+    });
+  } catch (error) {
+    console.error('Error closing inspection session:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 

@@ -17,7 +17,11 @@ import {
   ShieldCheck, 
   FileText,
   ArrowRight,
-  ExternalLink
+  ExternalLink,
+  Gavel,
+  AlertOctagon,
+  FileCheck,
+  X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { 
@@ -25,6 +29,8 @@ import {
   scanMultiPackages, 
   generateReport, 
   recordVerificationDecisions,
+  closeInspectionSession,
+  issueChallan,
   ScanResponse, 
   InspectionSession 
 } from '../services/api'
@@ -117,6 +123,19 @@ const Scan: React.FC = () => {
     return null
   })
 
+  // Issue Challan Modal State
+  const [isChallanModalOpen, setIsChallanModalOpen] = useState(false)
+  const [isIssuingChallan, setIsIssuingChallan] = useState(false)
+  const [challanData, setChallanData] = useState({
+    manufacturer_name: '',
+    product_name: '',
+    penalty_amount: 25000,
+    act_sections: ['Section 36(1) of Legal Metrology Act, 2009 (Penalty for Non-standard Pre-packaged Commodity)'],
+    notes: '',
+    due_days: 15,
+    hearing_days: 21
+  })
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -160,10 +179,11 @@ const Scan: React.FC = () => {
     try {
       let result: ScanResponse
       if (populatedPanels.length === 1) {
-        result = await scanPackage(populatedPanels[0].file!)
+        result = await scanPackage(populatedPanels[0].file!, activeSession?.session_id)
       } else {
         result = await scanMultiPackages(
-          populatedPanels.map(p => ({ panel: p.label, file: p.file! }))
+          populatedPanels.map(p => ({ panel: p.label, file: p.file! })),
+          activeSession?.session_id
         )
       }
 
@@ -249,6 +269,74 @@ const Scan: React.FC = () => {
     }
   }
 
+  const handleCloseSession = async () => {
+    if (!activeSession) return
+    const sessionId = activeSession.session_id
+    const entityName = activeSession.entity_name || 'Premises Under Audit'
+    try {
+      toast.loading('Finalizing inspection session & generating statutory reports...', { id: 'closing-session' })
+      const res = await closeInspectionSession(sessionId, {
+        inspector_name: user?.name || 'Field Inspector'
+      })
+      sessionStorage.removeItem('sih26034_active_session')
+      setActiveSession(null)
+      toast.success(`Inspection session for ${entityName} successfully completed! Inspection reports updated.`, { id: 'closing-session', duration: 5000 })
+    } catch (err) {
+      sessionStorage.removeItem('sih26034_active_session')
+      setActiveSession(null)
+      toast.success('Inspection session closed and saved.', { id: 'closing-session' })
+    }
+  }
+
+  const handleOpenChallanModal = () => {
+    if (!scanResult) return
+    const defaultMfg = activeSession?.entity_name || scanResult.declarations?.manufacturer || 'Unknown Manufacturer / Packer'
+    const defaultProduct = scanResult.declarations?.generic_name || 'Pre-packaged Commodity'
+    setChallanData({
+      manufacturer_name: defaultMfg,
+      product_name: defaultProduct,
+      penalty_amount: 25000,
+      act_sections: ['Section 36(1) of Legal Metrology Act, 2009 (Penalty for Non-standard Pre-packaged Commodity)'],
+      notes: `Statutory non-compliance detected during inspection. Violations: ${scanResult.violations.map(v => `${v.rule_code}: ${v.declaration}`).join(', ')}`,
+      due_days: 15,
+      hearing_days: 21
+    })
+    setIsChallanModalOpen(true)
+  }
+
+  const handleIssueChallanSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!scanResult) return
+    setIsIssuingChallan(true)
+    try {
+      const payload = {
+        scan_id: scanResult.scan_id,
+        manufacturer_name: challanData.manufacturer_name,
+        product_name: challanData.product_name,
+        issued_by: user?.name || 'District Legal Metrology Officer',
+        issued_by_role: user?.role || 'DLMO',
+        inspector_name: user?.name || 'Field Inspector',
+        violation_codes: scanResult.violations.map(v => v.rule_code),
+        act_sections: challanData.act_sections,
+        penalty_amount: Number(challanData.penalty_amount),
+        due_days: Number(challanData.due_days),
+        hearing_days: Number(challanData.hearing_days),
+        notes: challanData.notes
+      }
+      const res = await issueChallan(payload)
+      if (res.success) {
+        toast.success(`Statutory Challan #${res.challan?.challan_id || 'CHL-NEW'} issued successfully!`, { duration: 6000 })
+        setIsChallanModalOpen(false)
+      } else {
+        toast.error('Could not issue challan')
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Error issuing challan')
+    } finally {
+      setIsIssuingChallan(false)
+    }
+  }
+
   const mandatoryDeclarationsList = [
     {
       name: 'Common / Generic Name of Commodity',
@@ -330,14 +418,11 @@ const Scan: React.FC = () => {
                 <span>Quantity Check</span>
               </button>
               <button
-                onClick={() => {
-                  sessionStorage.removeItem('sih26034_active_session')
-                  setActiveSession(null)
-                  toast('Inspection session ended', { icon: 'ℹ️' })
-                }}
-                className="px-3 py-1.5 bg-gray-800/80 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold"
+                onClick={handleCloseSession}
+                className="px-3.5 py-1.5 bg-rose-800/80 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center space-x-1"
+                title="Finalize audit session and compile compliance reports"
               >
-                Close Session
+                <span>Close Session</span>
               </button>
             </div>
           </div>
@@ -545,6 +630,15 @@ const Scan: React.FC = () => {
                 </div>
 
                 <div className="flex items-center space-x-2">
+                  {(scanResult.violations.length > 0 || scanResult.status === 'FAIL') && (
+                    <button
+                      onClick={handleOpenChallanModal}
+                      className="px-3.5 py-1.5 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white text-xs font-black rounded-lg shadow-sm flex items-center space-x-1.5 animate-pulse"
+                    >
+                      <Gavel className="h-3.5 w-3.5 text-yellow-300" />
+                      <span>Issue Challan</span>
+                    </button>
+                  )}
                   <button
                     onClick={handleGenerateStatutoryReport}
                     disabled={isGeneratingReport}
@@ -555,6 +649,33 @@ const Scan: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Statutory Non-Compliance & Challan Banner */}
+              {(scanResult.violations.length > 0 || scanResult.status === 'FAIL') && (
+                <div className="bg-gradient-to-r from-red-500/10 via-rose-500/10 to-red-500/10 border-2 border-red-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 bg-red-600 text-white rounded-xl mt-0.5 shadow-sm">
+                      <AlertOctagon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-sm text-red-950 flex items-center space-x-2">
+                        <span>Statutory Violations Flagged ({scanResult.violations.length})</span>
+                        <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Non-Compliant</span>
+                      </h4>
+                      <p className="text-xs text-red-800 mt-0.5 leading-relaxed">
+                        Under Legal Metrology (Packaged Commodities) Rules, 2011, even a single rule defect is an offence under Section 36(1). You can issue an official statutory challan immediately.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleOpenChallanModal}
+                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-red-700 to-rose-700 hover:from-red-800 hover:to-rose-800 text-white text-xs font-black rounded-xl shadow-md flex items-center justify-center space-x-1.5 whitespace-nowrap transition-transform active:scale-95"
+                  >
+                    <Gavel className="h-4 w-4 text-yellow-300" />
+                    <span>Issue Legal Challan</span>
+                  </button>
+                </div>
+              )}
 
               {/* Next Step Workflow Actions for Field Inspector */}
               {!isSelfCheckMode && (
@@ -607,10 +728,19 @@ const Scan: React.FC = () => {
               {/* Human-in-the-loop Verification Cards */}
               {scanResult.violations.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="font-bold text-sm text-gray-900 flex items-center space-x-2">
-                    <ShieldAlert className="h-4 w-4 text-red-600" />
-                    <span>Statutory Findings (Human Verification)</span>
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-sm text-gray-900 flex items-center space-x-2">
+                      <ShieldAlert className="h-4 w-4 text-red-600" />
+                      <span>Statutory Findings ({scanResult.violations.length} Defect(s))</span>
+                    </h3>
+                    <button
+                      onClick={handleOpenChallanModal}
+                      className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-800 text-xs font-bold rounded-lg flex items-center space-x-1"
+                    >
+                      <Gavel className="h-3.5 w-3.5" />
+                      <span>Issue Challan for Findings</span>
+                    </button>
+                  </div>
 
                   {scanResult.violations.map((v, idx) => {
                     const currentStatus = verificationStates[v.rule_code] || 'PENDING'
@@ -700,6 +830,167 @@ const Scan: React.FC = () => {
           sessionStorage.setItem('sih26034_active_session', JSON.stringify(session))
         }}
       />
+
+      {/* Issue Statutory Challan Modal */}
+      {isChallanModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-gray-200 overflow-hidden my-8 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-red-800 via-rose-900 to-red-900 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-white/10 rounded-2xl">
+                  <Gavel className="h-6 w-6 text-yellow-300" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-tight">Issue Statutory Legal Metrology Challan</h3>
+                  <p className="text-xs text-red-200 mt-0.5">Section 36 / 39, Legal Metrology Act, 2009 & PCR, 2011</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsChallanModalOpen(false)}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleIssueChallanSubmit} className="p-6 space-y-4">
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Offender / Manufacturer / Establishment Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={challanData.manufacturer_name}
+                    onChange={(e) => setChallanData({ ...challanData, manufacturer_name: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-red-500 focus:bg-white outline-none"
+                    placeholder="e.g. Parle Agro Pvt. Ltd. / Metro Hypermarket"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Commodity / Product Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={challanData.product_name}
+                    onChange={(e) => setChallanData({ ...challanData, product_name: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-red-500 focus:bg-white outline-none"
+                    placeholder="e.g. Marie Biscuits 500g"
+                  />
+                </div>
+
+                {/* Detected Violations Summary */}
+                {scanResult?.violations && scanResult.violations.length > 0 && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1.5">
+                    <p className="text-xs font-bold text-red-900 flex items-center space-x-1">
+                      <ShieldAlert className="h-3.5 w-3.5 text-red-600" />
+                      <span>Applicable Violation Codes ({scanResult.violations.length}):</span>
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {scanResult.violations.map((v, i) => (
+                        <span key={i} className="text-[11px] font-bold bg-white text-red-800 border border-red-200 px-2 py-0.5 rounded-md shadow-2xs">
+                          {v.rule_code}: {v.declaration}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                      Compounding Fine Amount (₹)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={1000}
+                      step={500}
+                      value={challanData.penalty_amount}
+                      onChange={(e) => setChallanData({ ...challanData, penalty_amount: Number(e.target.value) })}
+                      className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-black text-red-600 focus:ring-2 focus:ring-red-500 focus:bg-white outline-none"
+                    />
+                    <div className="flex space-x-1.5 mt-1">
+                      {[25000, 50000, 100000].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => setChallanData({ ...challanData, penalty_amount: amt })}
+                          className="text-[10px] px-2 py-0.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded font-bold"
+                        >
+                          ₹{amt.toLocaleString()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                      Rectification Window (Days)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      max={90}
+                      value={challanData.due_days}
+                      onChange={(e) => setChallanData({ ...challanData, due_days: Number(e.target.value) })}
+                      className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-red-500 focus:bg-white outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Officer Findings & Notes
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={challanData.notes}
+                    onChange={(e) => setChallanData({ ...challanData, notes: e.target.value })}
+                    className="w-full px-3.5 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 focus:ring-2 focus:ring-red-500 focus:bg-white outline-none"
+                    placeholder="Enter inspection findings and compounding grounds..."
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-gray-200 flex items-center justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setIsChallanModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isIssuingChallan}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-700 to-rose-700 hover:from-red-800 hover:to-rose-800 text-white font-black text-xs shadow-lg flex items-center space-x-1.5 disabled:opacity-50"
+                >
+                  {isIssuingChallan ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>Issuing Challan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Gavel className="h-4 w-4 text-yellow-300" />
+                      <span>Issue Statutory Challan</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

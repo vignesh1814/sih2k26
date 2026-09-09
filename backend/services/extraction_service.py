@@ -104,52 +104,97 @@ Return a valid JSON object matching these exact fields:
         else:
             decl.has_inclusive_phrase = bool(re.search(tax_pattern, full_text, re.I))
 
-        # 4. Unit Sale Price (USP)
-        m_usp = re.search(r'(?:Unit\s*Sale\s*Price|USP)\s*[:\-.]?\s*(?:Rs\.?|INR|\u20b9)?\s*(\d+(?:\.\d+)?)\s*(?:per|\/)\s*([a-zA-Z]+)', full_text, re.I)
-        if m_usp:
+        # 4. Unit Sale Price (USP) under Rule 6(11)
+        # Matches patterns like "USP Rs. 1.03 / g", "1.03 / g", "1.03/g", "1.03 g", "Rs 1.03 per g", "₹ 1.03 / 100g", "1.03 / gm", "1.03 per gram"
+        usp_val = None
+        m_usp_explicit = re.search(r'(?:Unit\s*Sale\s*Price|USP|Unit\s*Price)\s*[:\-.]?\s*(?:Rs\.?|INR|\u20b9)?\s*(\d+(?:\.\d+)?)\s*(?:\/|\s*per\s*|\s+)?\s*([a-zA-Z0-9]+)?', full_text, re.I)
+        m_usp_slash = re.search(r'(?:(?:Rs\.?|rs\.?|\u20b9|INR)\s*)?(\d+(?:\.\d+)?)\s*(?:\/|\s*per\s*)\s*(?:100g|100ml|10g|g|gm|gms|gram|grams|kg|kgs|ml|l|ltr|ltrs|L|mL|N|count|piece|pcs|unit)\b', full_text, re.I)
+        m_usp_decimal = re.search(r'(?:(?:Rs\.?|rs\.?|\u20b9|INR)\s*)?(\d+\.\d{1,4})\s*(?:g|gm|gms|ml|l|kg|N)\b', full_text, re.I)
+
+        if m_usp_explicit and m_usp_explicit.group(1):
             try:
-                decl.unit_sale_price = float(m_usp.group(1))
+                usp_val = float(m_usp_explicit.group(1))
+            except Exception:
+                pass
+        elif m_usp_slash and m_usp_slash.group(1):
+            try:
+                usp_val = float(m_usp_slash.group(1))
+            except Exception:
+                pass
+        elif m_usp_decimal and m_usp_decimal.group(1):
+            try:
+                parsed = float(m_usp_decimal.group(1))
+                net_qty_val = float(decl.net_quantity) if decl.net_quantity else None
+                if net_qty_val is None or abs(net_qty_val - parsed) > 0.01:
+                    usp_val = parsed
             except Exception:
                 pass
 
-        # 5. Mfg Date
-        m_date = re.search(r'(?:Mfg|Date\s*of\s*Mfg|Manufactured|PKD|Packed)\s*[:\-.]?\s*(\d{1,2}[\/\-]\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s\-]\d{2,4}\b)', full_text, re.I)
+        if usp_val is not None:
+            decl.unit_sale_price = round(usp_val, 2)
+
+        # 5. Mfg Date - match standard patterns, mm/yyyy, mm/yy or any standalone year (2018-2035)
+        m_date = re.search(r'(?:Mfg|Date\s*of\s*Mfg|Manufactured|PKD|Packed|Mfd|Pkg\s*Date|Batch|DOM|Date|Year|Yr)\s*[:\-.]?\s*(\d{1,2}[\/\-]\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s\-]\d{2,4}\b|\b20[123]\d\b)', full_text, re.I)
         if m_date:
             decl.mfg_date = m_date.group(1).strip()
         else:
-            m_generic_date = re.search(r'\b(0[1-9]|1[0-2])[\/\-](20\d{2})\b', full_text)
+            m_generic_date = re.search(r'\b(0[1-9]|1[0-2])[\/\-](20\d{2}|\d{2})\b', full_text)
             if m_generic_date:
                 decl.mfg_date = m_generic_date.group(0)
+            else:
+                m_standalone_year = re.search(r'\b(201[8-9]|202[0-9]|203[0-5])\b', full_text)
+                if m_standalone_year:
+                    decl.mfg_date = m_standalone_year.group(0)
+                else:
+                    m_short_year = re.search(r"'(2[0-9])\b", full_text)
+                    if m_short_year:
+                        decl.mfg_date = f"20{m_short_year.group(1)}"
 
         # 6. Manufacturer
         m_mfd = re.search(r'(?:Mfd\s*by|Manufactured\s*by|Packer|Packed\s*by|Marketed\s*by)\s*[:\-.]?\s*([^\n\r]+(?:\n[^\n\r]+)?)', full_text, re.I)
         if m_mfd:
             decl.manufacturer = m_mfd.group(1).replace("\n", ", ").strip()
 
-        # 7. Customer Care (Toll Free No, Helpline, Phone, Email)
+        # 7. Customer / Consumer Care Helpline, Phone & Email
+        # ANY email address OR ANY phone number / mobile number sequence is considered Customer Care
         care_contacts = []
-        # Toll-Free pattern (e.g. 1800 22 7700, 1800-180-1234, 18001801234, 1800 11 2233)
+        
+        # (A) Any Email Address
+        m_email = re.findall(r'\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})\b', full_text)
+        for em in m_email:
+            care_contacts.append(f"Email: {em.strip()}")
+
+        # (B) Toll-Free pattern (e.g. 1800 22 7700, 1800-180-1234, 18001801234, 1800 11 2233)
         m_tollfree = re.search(r'\b(1800[-\s]?\d{2,3}[-\s]?\d{3,4}|\b1800\d{6,7}\b)\b', full_text)
         if m_tollfree:
             care_contacts.append(f"Toll Free: {m_tollfree.group(1).strip()}")
 
-        # Email address pattern (e.g. customercare@parle.biz, feedback@tataconsumer.com)
-        m_email = re.search(r'\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,})\b', full_text)
-        if m_email:
-            care_contacts.append(f"Email: {m_email.group(1).strip()}")
+        # (C) Explicit Consumer Care Header
+        m_care_header = re.search(r'(?:Consumer\s*Care|Customer\s*Care|Helpline|Grievance\s*Cell|Feedback|Customer\s*Support|Queries\s*&?\s*Feedback|Contact\s*Us)\s*[:\-.]?\s*([^\n\r]+)', full_text, re.I)
+        if m_care_header:
+            hdr_str = m_care_header.group(1).strip()
+            if not any(hdr_str.lower() in c.lower() for c in care_contacts):
+                care_contacts.append(hdr_str)
 
-        # Explicit Customer / Consumer Care headers
-        m_care_header = re.search(r'(?:Consumer\s*Care|Customer\s*Care|Helpline|Grievance\s*Cell|Feedback)\s*[:\-.]?\s*([^\n\r]+)', full_text, re.I)
-        if m_care_header and not care_contacts:
-            care_contacts.append(m_care_header.group(1).strip())
+        # (D) Any standard phone/mobile number (Mobile +91 / 10-digit, Landline with STD code, e.g. 022-27894500, +91 9876543210, 9876543210)
+        phone_pattern = r'(?:(?:Tel|Phone|Mob|Mobile|Contact|Call|Helpline|No|Ph)\s*[:\-.]?\s*)?(\+91[-\s]?[6-9]\d{9}|\b0\d{2,4}[-\s]?\d{6,8}\b|\b[6-9]\d{9}\b|\b\d{3,4}[-\s]?\d{6,8}\b)'
+        m_phone = re.search(phone_pattern, full_text, re.I)
+        if m_phone and m_phone.group(1):
+            p_str = m_phone.group(1).strip()
+            if not decl.barcode or p_str not in decl.barcode:
+                if not any(p_str in c for c in care_contacts):
+                    care_contacts.append(f"Phone: {p_str}")
+
+        # (E) Fallback: Any standalone 10-digit or 11-digit number sequence in text
+        if not care_contacts:
+            m_fallback = re.search(r'\b([6-9]\d{9}|0\d{10})\b', full_text)
+            if m_fallback and m_fallback.group(1):
+                num_str = m_fallback.group(1).strip()
+                if not decl.barcode or num_str not in decl.barcode:
+                    care_contacts.append(f"Contact: {num_str}")
 
         if care_contacts:
             decl.consumer_care = " | ".join(care_contacts)
-        else:
-            # General phone fallback
-            m_gen_phone = re.search(r'\b(?:Tel|Phone|Mob)?\s*[:\-.]?\s*(\+91[-\s]?\d{10}|\b\d{10}\b)', full_text, re.I)
-            if m_gen_phone:
-                decl.consumer_care = f"Phone: {m_gen_phone.group(1).strip()}"
 
         # 8. Barcode (EAN-13 or UPC)
         m_bar = re.search(r'\b(\d{13}|\d{12})\b', full_text)

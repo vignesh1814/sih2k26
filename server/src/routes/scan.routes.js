@@ -134,14 +134,11 @@ router.put('/scans/:id/verify', async (req, res) => {
     }
 
     // Recompute overall status based on human decisions
-    const confirmedViolations = scan.violations.filter(v => v.human_decision === 'CONFIRMED' || (!v.human_decision && v.severity === 'CRITICAL'));
-    const reviewViolations = scan.violations.filter(v => v.human_decision === 'NEEDS_REVIEW');
-    
-    if (confirmedViolations.length > 0) {
+    // Even if there is one violation that is not explicitly rejected by the officer, consider it FAIL
+    const activeViolations = (scan.violations || []).filter(v => v.human_decision !== 'REJECTED');
+    if (activeViolations.length > 0) {
       scan.status = 'FAIL';
-    } else if (reviewViolations.length > 0) {
-      scan.status = 'NEEDS_REVIEW';
-    } else if (scan.violations.length > 0 && scan.violations.every(v => v.human_decision === 'REJECTED')) {
+    } else {
       scan.status = 'PASS';
     }
 
@@ -239,7 +236,7 @@ router.post('/scan', upload.single('file'), async (req, res) => {
     const scanRecord = {
       scan_id: scanId,
       session_id: sessionId,
-      status: (!declarations.manufacturer && !declarations.mrp) ? 'INSUFFICIENT_EVIDENCE' : status,
+      status: violations.length > 0 ? 'FAIL' : ((!declarations.manufacturer && !declarations.mrp) ? 'INSUFFICIENT_EVIDENCE' : status),
       overall_confidence: avg_conf || 0.95,
       image_quality: imageQuality,
       declarations,
@@ -277,6 +274,46 @@ router.post('/scan', upload.single('file'), async (req, res) => {
       }
     } else {
       inMemoryStore.scans.unshift(scanRecord);
+      if (sessionId) {
+        const sess = (inMemoryStore.sessions || []).find(s => s.session_id === sessionId);
+        if (sess) {
+          sess.packages_inspected = (sess.packages_inspected || 0) + 1;
+          if (scanRecord.status === 'PASS') sess.compliant_count = (sess.compliant_count || 0) + 1;
+          if (scanRecord.status === 'FAIL') sess.non_compliant_count = (sess.non_compliant_count || 0) + 1;
+          if (scanRecord.status === 'NEEDS_REVIEW') sess.review_required_count = (sess.review_required_count || 0) + 1;
+          sess.violations_detected = (sess.violations_detected || 0) + violations.length;
+        }
+      }
+    }
+
+    // Auto-create Report document so it is immediately accessible in Reports
+    try {
+      const { pdf_url, evidence_hash } = await ReportService.generateReport({
+        scanId: scanRecord.scan_id,
+        scanData: scanRecord,
+        officerName: isSelfCheck ? 'Manufacturer Desk' : 'Field Inspector',
+        station: 'Legal Metrology Compliance Wing',
+        notes: sessionId ? `Session: ${sessionId}` : 'Field Scan'
+      });
+      const reportDoc = {
+        report_id: uuidv4(),
+        scan_id: scanRecord.scan_id,
+        officer_name: isSelfCheck ? 'Manufacturer Desk' : 'Field Inspector',
+        station_jurisdiction: 'Legal Metrology Compliance Wing',
+        pdf_url,
+        evidence_hash,
+        status: 'COMPLETED',
+        generated_at: new Date(),
+        notes: sessionId ? `Session: ${sessionId}` : 'Field Scan'
+      };
+      if (isDbConnected()) {
+        await Report.create(reportDoc).catch(() => {});
+      } else {
+        inMemoryStore.reports = inMemoryStore.reports || [];
+        inMemoryStore.reports.unshift(reportDoc);
+      }
+    } catch (repErr) {
+      console.warn('[Auto-report generation note]', repErr.message);
     }
 
     // Save Audit Log
@@ -339,7 +376,7 @@ router.post('/scan-multi', upload.array('files'), async (req, res) => {
     const scanRecord = {
       scan_id: scanId,
       session_id: sessionId,
-      status,
+      status: violations.length > 0 ? 'FAIL' : status,
       overall_confidence: Math.round(avgOverallConf * 100) / 100,
       image_quality: {
         is_acceptable: true,

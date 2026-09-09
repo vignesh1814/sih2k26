@@ -84,7 +84,10 @@ async def scan_package(file: UploadFile = File(...)):
     status, violations = compliance_service.evaluate_compliance(declarations)
 
     # Check for missing crucial panels
-    if not declarations.manufacturer and not declarations.mrp:
+    if violations:
+        status = "FAIL"
+        msg = "Scan processed. Statutory rule violation(s) detected."
+    elif not declarations.manufacturer and not declarations.mrp:
         status = "INSUFFICIENT_EVIDENCE"
         msg = "Multiple key panels missing. Please rotate package and scan rear/bottom panel."
     else:

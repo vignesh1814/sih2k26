@@ -1,5 +1,9 @@
 import json
-import zen
+try:
+    import zen
+except ImportError:
+    zen = None
+
 from typing import List, Tuple
 from backend.models.schemas import ExtractedDeclarations, RuleViolation
 from auxiliary_modules.metric_unit_math import MetricUnitMathEngine
@@ -7,10 +11,20 @@ from auxiliary_modules.barcode_validator import BarcodeValidator
 
 class ComplianceService:
     def __init__(self):
-        self.engine = zen.ZenEngine()
-        self.rule_decision = self._init_rule_decision()
+        self.engine = None
+        self.rule_decision = None
+        if zen is not None:
+            try:
+                self.engine = zen.ZenEngine()
+                self.rule_decision = self._init_rule_decision()
+            except Exception as e:
+                print(f"[WARN] Failed to initialize ZenEngine: {e}")
+                self.engine = None
+                self.rule_decision = None
 
     def _init_rule_decision(self):
+        if not self.engine:
+            return None
         decision_content = {
             "nodes": [
                 {"id": "in_node", "name": "Input Node", "type": "inputNode"},
@@ -181,32 +195,54 @@ class ComplianceService:
                     severity="WARNING"
                 ))
 
-        # 6. Zen Engine rule evaluation (JDM Graph execution)
-        try:
-            zen_res = self.rule_decision.evaluate({
-                "unit": decl.unit or "",
-                "mrp": decl.mrp or 0.0,
-                "has_inclusive_phrase": decl.has_inclusive_phrase if decl.has_inclusive_phrase is not None else True
-            })
-            zen_violations = zen_res.get("result", {}).get("violations", [])
-            for zv in zen_violations:
-                if not any(v.rule_code == zv["rule_code"] for v in violations):
+        # 6. Rule Evaluation (ZenEngine or Native Python Rule Engine)
+        if self.rule_decision is not None:
+            try:
+                zen_res = self.rule_decision.evaluate({
+                    "unit": decl.unit or "",
+                    "mrp": decl.mrp or 0.0,
+                    "has_inclusive_phrase": decl.has_inclusive_phrase if decl.has_inclusive_phrase is not None else True
+                })
+                zen_violations = zen_res.get("result", {}).get("violations", [])
+                for zv in zen_violations:
+                    if not any(v.rule_code == zv["rule_code"] for v in violations):
+                        violations.append(RuleViolation(
+                            rule_code=zv["rule_code"],
+                            declaration=zv["declaration"],
+                            reason=zv["reason"],
+                            severity=zv.get("severity", "CRITICAL"),
+                            suggested_correction=zv.get("suggested_correction")
+                        ))
+            except Exception as e:
+                print(f"[WARN] Zen Engine evaluation error: {e}")
+        else:
+            # Native Python fallback evaluation
+            if decl.unit:
+                forbidden = ['gms', 'ltrs', 'kgs', 'gm', 'ml.', 'ltr', 'gms.', 'gm.']
+                u = decl.unit.lower().strip()
+                if u in forbidden and not any(v.rule_code.startswith("Rule 6(1)(c)") for v in violations):
                     violations.append(RuleViolation(
-                        rule_code=zv["rule_code"],
-                        declaration=zv["declaration"],
-                        reason=zv["reason"],
-                        severity=zv.get("severity", "CRITICAL"),
-                        suggested_correction=zv.get("suggested_correction")
+                        rule_code="Rule 6(1)(c) & Rule 13",
+                        declaration="Net Quantity Unit",
+                        reason=f"Prohibited colloquial unit abbreviation '{decl.unit}'. Non-standard under Section 11 of Act.",
+                        severity="CRITICAL",
+                        suggested_correction="Replace with statutory SI symbol (e.g., 'g' or 'kg')"
                     ))
-        except Exception as e:
-            print(f"[WARN] Zen Engine evaluation error: {e}")
+
+            if decl.mrp and decl.has_inclusive_phrase is False:
+                if not any(v.rule_code == "Rule 6(1)(e)" for v in violations):
+                    violations.append(RuleViolation(
+                        rule_code="Rule 6(1)(e)",
+                        declaration="Maximum Retail Price (MRP)",
+                        reason="MRP does not contain mandatory statutory phrase 'Inclusive of all taxes'",
+                        severity="CRITICAL",
+                        suggested_correction="Mandatory suffix 'Inclusive of all taxes' must accompany MRP"
+                    ))
 
         # Determine overall status
-        critical_violations = [v for v in violations if v.severity == "CRITICAL"]
-        if critical_violations:
+        # Even if there is one rule not satisfied, mark as violation (FAIL)
+        if violations:
             status = "FAIL"
-        elif violations:
-            status = "NEEDS_REVIEW"
         else:
             status = "PASS"
 
