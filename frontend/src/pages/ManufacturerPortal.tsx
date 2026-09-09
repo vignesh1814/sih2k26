@@ -11,24 +11,15 @@ import {
   FileCheck2, 
   CheckCircle, 
   AlertTriangle, 
-  Clock, 
   Gavel, 
   ShieldCheck, 
-  Upload, 
-  ArrowRight,
-  ExternalLink,
-  DollarSign,
-  Send,
   RefreshCw,
   X,
   CreditCard,
-  Receipt,
-  FileText,
   Lock
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-
 import { useAuth } from '../contexts/AuthContext'
 
 const PAYMENT_METHODS = [
@@ -43,7 +34,8 @@ const ManufacturerPortal: React.FC = () => {
   const brandName = user?.organization || user?.name || 'Sunrise Foods & FMCG Ltd'
   const [data, setData] = useState<ManufacturerDashboardData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'challans' | 'audits' | 'compliance'>('challans')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [activeTab, setActiveTab] = useState<'challans' | 'audits'>('challans')
   
   // Payment Modal State
   const [payingChallan, setPayingChallan] = useState<Challan | null>(null)
@@ -55,9 +47,10 @@ const ManufacturerPortal: React.FC = () => {
   const [selectedChallan, setSelectedChallan] = useState<Challan | null>(null)
   const [responseText, setResponseText] = useState('')
   const [proofUrl, setProofUrl] = useState('')
-  const [submitting, setSubmitting] = useState(false)
 
-  const loadData = async () => {
+  const loadData = async (silent = false) => {
+    if (!silent) setIsLoading(true)
+    else setIsRefreshing(true)
     try {
       const res = await fetchManufacturerDashboard(brandName)
       setData(res)
@@ -66,23 +59,27 @@ const ManufacturerPortal: React.FC = () => {
       toast.error('Could not load brand data')
     } finally {
       setIsLoading(false)
+      setIsRefreshing(false)
     }
   }
 
   useEffect(() => {
     loadData()
-  }, [])
+    // Periodic sync every 15 seconds to catch superior issued challans automatically
+    const interval = setInterval(() => loadData(true), 15000)
+    return () => clearInterval(interval)
+  }, [brandName])
 
   const handleUpdateStatus = async (challanId: string, status: string) => {
     try {
       await updateChallanStatus(challanId, status, responseText, proofUrl, undefined, 'Sunrise Compliance Desk')
-      toast.success(`Challan updated to: ${status}`)
+      toast.success(`Challan status updated to: ${status}`)
       setSelectedChallan(null)
       setResponseText('')
       setProofUrl('')
-      loadData()
+      loadData(true)
     } catch (err) {
-      toast.error('Failed to update challan')
+      toast.error('Failed to update challan status')
     }
   }
 
@@ -109,7 +106,7 @@ const ManufacturerPortal: React.FC = () => {
       })
       
       toast.success(`Penalty ₹${payingChallan.penalty_amount.toLocaleString('en-IN')} paid successfully! Case settled.`)
-      loadData()
+      loadData(true)
     } catch (err) {
       toast.error('Payment processing failed. Please retry.')
     } finally {
@@ -132,20 +129,35 @@ const ManufacturerPortal: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2.5 mb-1.5">
             <span className="p-1.5 bg-emerald-600 rounded-lg text-xs font-black uppercase tracking-wider">Manufacturer Console</span>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight">{data?.brand_name || 'Sunrise Foods & FMCG Ltd'}</h1>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight">{data?.brand_name || 'Registered Manufacturer Desk'}</h1>
           </div>
           <p className="text-xs sm:text-sm text-emerald-200">
             Corporate Compliance Desk • Statutory Notice Management • Product Inspection Audit Records • Fine Settlement
           </p>
         </div>
 
-        <Link
-          to="/scan"
-          className="flex items-center space-x-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-lg transition-all"
-        >
-          <ShieldCheck className="h-4 w-4" />
-          <span>Pre-Market Label Self-Check</span>
-        </Link>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => {
+              loadData(true)
+              toast.success('Challan records synchronized with Legal Metrology Server')
+            }}
+            disabled={isRefreshing}
+            className="flex items-center space-x-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/20 transition-all"
+            title="Refresh latest notices"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-yellow-300' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Challans'}</span>
+          </button>
+
+          <Link
+            to="/scan"
+            className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-lg transition-all"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            <span>Pre-Market Label Check</span>
+          </Link>
+        </div>
       </div>
 
       {/* Brand Stat Summary Cards */}
@@ -193,7 +205,7 @@ const ManufacturerPortal: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Compliance Rating</p>
-              <p className="text-2xl font-black text-amber-600 mt-1">{data?.compliance_rate || '68%'}</p>
+              <p className="text-2xl font-black text-amber-600 mt-1">{data?.compliance_rate || '85%'}</p>
               <p className="text-xs text-amber-700 font-semibold mt-1">{data?.compliance_grade}</p>
             </div>
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -226,7 +238,7 @@ const ManufacturerPortal: React.FC = () => {
           }`}
         >
           <FileCheck2 className="h-4 w-4" />
-          <span>Detailed Product Inspection Reports</span>
+          <span>Product Inspection Certificates</span>
         </button>
       </div>
 
@@ -256,7 +268,7 @@ const ManufacturerPortal: React.FC = () => {
                     </span>
                   </div>
                   <h3 className="text-base font-bold text-gray-900">{ch.product_name}</h3>
-                  <p className="text-xs text-gray-500">Issued by: {ch.issued_by} • {ch.inspector_name}</p>
+                  <p className="text-xs text-gray-500">Issued by: {ch.issued_by} ({ch.issued_by_role || 'DLMO'}) • {ch.inspector_name}</p>
                 </div>
 
                 <div className="text-right">
@@ -358,20 +370,20 @@ const ManufacturerPortal: React.FC = () => {
           {(!data?.challans || data.challans.length === 0) && (
             <div className="bg-white p-12 text-center rounded-2xl border border-gray-200">
               <ShieldCheck className="h-12 w-12 text-emerald-500 mx-auto mb-2" />
-              <p className="font-bold text-gray-800">No active challans pending against {data?.brand_name}</p>
+              <p className="font-bold text-gray-800">No active challans pending</p>
               <p className="text-xs text-gray-500 mt-1">All packaging declarations comply with LMPC standards or have been settled.</p>
             </div>
           )}
         </div>
       )}
 
-      {/* TAB 2: DETAILED PRODUCT INSPECTION REPORTS */}
+      {/* TAB 2: DETAILED PRODUCT INSPECTION CERTIFICATES */}
       {activeTab === 'audits' && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Official Inspection Reports for {data?.brand_name}</h3>
-              <p className="text-xs text-gray-500">Full evidence-grade audit certificates conducted by Legal Metrology inspectors</p>
+              <p className="text-xs text-gray-500">Evidence-grade certificates recorded by Legal Metrology inspection squads</p>
             </div>
             <Link to="/reports" className="text-xs font-bold text-emerald-600 hover:underline">
               View Global Reports Archive →
@@ -390,7 +402,7 @@ const ManufacturerPortal: React.FC = () => {
                 <div><span className="text-gray-400">Net Quantity:</span> 400 gms (Non-standard)</div>
                 <div><span className="text-gray-400">Tax Clause:</span> Missing 'incl. of all taxes'</div>
               </div>
-              <p className="text-rose-700 font-semibold">• Rule 6(1)(c): Non-standard unit 'gms' instead of standard symbol 'g'</p>
+              <p className="text-rose-700 font-semibold">• Rule 6(1)(c): Non-standard unit 'gms' instead of standard SI symbol 'g'</p>
               <p className="text-rose-700 font-semibold">• Rule 6(1)(e): MRP declaration lacks statutory tax inclusion phrase</p>
               <div className="pt-2 flex items-center justify-between border-t border-gray-200">
                 <span className="text-[10px] text-gray-400 font-mono">SHA-256: 9f2b84c7a1e0...</span>
@@ -473,7 +485,7 @@ const ManufacturerPortal: React.FC = () => {
                     ))}
                   </select>
                   <p className="text-[10px] text-gray-500 mt-1">
-                    Payment directly credits the Consolidated Fund of India under Legal Metrology Head 1475.
+                    Payment directly credits the Consolidated Fund of India under Legal Metrology Account Head 1475.
                   </p>
                 </div>
 
@@ -483,7 +495,7 @@ const ManufacturerPortal: React.FC = () => {
                     <span>Automated Settlement Note:</span>
                   </p>
                   <p className="text-[11px]">
-                    Once payment is confirmed, this violation will be marked <strong className="text-emerald-700">SETTLED</strong> and automatically removed from active inspection reports in Inspector and Superior queues.
+                    Once payment is confirmed, this violation will be marked <strong className="text-emerald-700">SETTLED</strong> and automatically removed from active inspection reports across Inspector and DLMO queues.
                   </p>
                 </div>
 
@@ -565,7 +577,7 @@ const ManufacturerPortal: React.FC = () => {
                 <textarea
                   rows={3}
                   required
-                  placeholder="e.g. Artwork cylinder revised from '400 gms' to '400 g'. Suffix 'incl. of all taxes' added next to MRP."
+                  placeholder="e.g. Artwork revised from '400 gms' to '400 g'. Suffix 'incl. of all taxes' added next to MRP."
                   value={responseText}
                   onChange={e => setResponseText(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
