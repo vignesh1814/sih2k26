@@ -4,27 +4,69 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+    @apply bg-[#F4F6F9] text-[#111827] antialiased font-sans;
+  }
+
+  /* GIGW 3.0 Accessible Focus Indicators */
+  a:focus-visible, 
+  button:focus-visible, 
+  input:focus-visible, 
+  select:focus-visible, 
+  textarea:focus-visible {
+    outline: 2px solid #1A5699 !important;
+    outline-offset: 2px !important;
   }
 }
 
-/* Custom scrollbars */
+/* High Contrast Mode */
+.high-contrast {
+  filter: contrast(130%);
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+}
+.high-contrast .bg-white,
+.high-contrast .bg-slate-50,
+.high-contrast .bg-gray-50 {
+  background-color: #121212 !important;
+  color: #FFFFFF !important;
+  border-color: #FFFF00 !important;
+}
+.high-contrast a,
+.high-contrast button {
+  border-color: #FFFF00 !important;
+}
+
+/* Skip to Main Content link */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 10px;
+  background: #0B2F5C;
+  color: #FFFFFF;
+  padding: 8px 16px;
+  z-index: 9999;
+  border-radius: 4px;
+  font-weight: 700;
+  transition: top 0.2s ease-in-out;
+}
+.skip-link:focus {
+  top: 10px;
+}
+
+/* Custom GIGW scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #F4F6F9;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
+  background: #94A3B8;
+  border-radius: 4px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #0B2F5C;
 }
 
 /* Bounding box styles */
