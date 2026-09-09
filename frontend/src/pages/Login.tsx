@@ -9,17 +9,10 @@ import {
   Building2, 
   CheckCircle2, 
   Scan, 
-  Scale, 
   Gavel, 
-  FileText, 
   ExternalLink, 
-  Eye, 
-  Volume2, 
   Lock, 
   ArrowRight,
-  Sparkles,
-  HelpCircle,
-  Globe,
   Award
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -34,7 +27,6 @@ const Login: React.FC = () => {
   // Accessibility State (GIGW 3.0)
   const [fontSizeOffset, setFontSizeOffset] = useState<number>(0)
   const [isHighContrast, setIsHighContrast] = useState<boolean>(false)
-  const [language, setLanguage] = useState<'EN' | 'HI'>('EN')
 
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -73,9 +65,7 @@ const Login: React.FC = () => {
     try {
       await login(cred.email, cred.password)
       toast.success(
-        language === 'HI'
-          ? `${roleKey === 'INSPECTOR' ? 'फील्ड निरीक्षक' : roleKey === 'DLMO' ? 'डीएलएमओ अधिकारी' : 'निर्माता'} के रूप में सफल प्रवेश!`
-          : `Authenticated successfully as ${roleKey === 'INSPECTOR' ? 'Field Inspector' : roleKey === 'DLMO' ? 'District Legal Metrology Officer' : 'Registered Manufacturer'}!`
+        `Authenticated successfully as ${roleKey === 'INSPECTOR' ? 'Field Inspector' : roleKey === 'DLMO' ? 'District Legal Metrology Officer' : 'Registered Manufacturer'}!`
       )
       navigate(cred.target, { replace: true })
     } catch (err: any) {
@@ -93,7 +83,7 @@ const Login: React.FC = () => {
 
     try {
       await login(email, password)
-      toast.success(language === 'HI' ? 'सफल प्रवेश' : 'Login successful')
+      toast.success('Login successful')
 
       const storedUser = localStorage.getItem('lm_user')
       const parsedUser = storedUser ? JSON.parse(storedUser) : null
@@ -110,7 +100,7 @@ const Login: React.FC = () => {
         navigate('/dashboard', { replace: true })
       }
     } catch (err: any) {
-      setError(err?.message || (language === 'HI' ? 'अमान्य क्रेडेंशियल्स। कृपया ईमेल और पासवर्ड की पुष्टि करें।' : 'Invalid credentials. Please verify your email and password.'))
+      setError(err?.message || 'Invalid credentials. Please verify your email and password.')
       toast.error('Login failed')
     } finally {
       setIsLoading(false)
@@ -121,22 +111,22 @@ const Login: React.FC = () => {
     <div className="min-h-screen bg-[#F4F6F9] text-[#111827] flex flex-col justify-between font-sans">
       {/* Skip to Main Content (GIGW 3.0 Requirement) */}
       <a href="#main-content" className="skip-link">
-        {language === 'HI' ? 'मुख्य विषयवस्तु पर जाएं (Skip to Main Content)' : 'Skip to Main Content'}
+        Skip to Main Content
       </a>
 
       {/* 1. Global Top Bar (Utility & Accessibility Toolbar - GIGW 3.0) */}
       <div className="bg-[#072040] text-gray-200 text-xs border-b border-blue-900/40 px-4 sm:px-8 py-1.5 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <span className="font-semibold text-gray-300">
-            {language === 'HI' ? 'भारत सरकार | Government of India' : 'Government of India | भारत सरकार'}
+            Government of India | भारत सरकार
           </span>
           <span className="hidden md:inline text-gray-400">•</span>
           <span className="hidden md:inline text-gray-300">
-            {language === 'HI' ? 'उपभोक्ता मामले विभाग' : 'Department of Consumer Affairs'}
+            Department of Consumer Affairs
           </span>
         </div>
 
-        {/* Accessibility & Language Tools */}
+        {/* Accessibility Tools */}
         <div className="flex items-center space-x-3">
           {/* Text Size Controls */}
           <div className="flex items-center space-x-1 bg-white/10 px-2 py-0.5 rounded border border-white/10">
@@ -180,17 +170,6 @@ const Login: React.FC = () => {
           >
             {isHighContrast ? 'Standard Mode' : 'High Contrast'}
           </button>
-
-          {/* Language Switcher */}
-          <button
-            onClick={() => setLanguage(lang => lang === 'EN' ? 'HI' : 'EN')}
-            className="px-2 py-0.5 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded text-[11px] flex items-center space-x-1"
-            title="Switch Language / भाषा बदलें"
-            aria-label="Switch Language"
-          >
-            <Globe className="h-3 w-3" />
-            <span>{language === 'EN' ? 'हिन्दी' : 'English'}</span>
-          </button>
         </div>
       </div>
 
@@ -205,7 +184,6 @@ const Login: React.FC = () => {
                 alt="State Emblem of India - Lion Capital of Ashoka"
                 className="h-14 w-auto drop-shadow-xs"
                 onError={(e) => {
-                  // Graceful fallback if image network fails
                   (e.target as HTMLElement).style.display = 'none'
                 }}
               />
@@ -213,10 +191,10 @@ const Login: React.FC = () => {
 
             <div className="border-l-2 border-gray-300 pl-3">
               <p className="text-[11px] font-bold text-[#0B2F5C] uppercase tracking-wide">
-                {language === 'HI' ? 'उपभोक्ता मामले, खाद्य और सार्वजनिक वितरण मंत्रालय' : 'Ministry of Consumer Affairs, Food & Public Distribution'}
+                Ministry of Consumer Affairs, Food & Public Distribution
               </p>
               <p className="text-xs font-semibold text-gray-700">
-                {language === 'HI' ? 'उपभोक्ता मामले विभाग • विधिक मापविज्ञान प्रभाग' : 'Department of Consumer Affairs • Legal Metrology Division'}
+                Department of Consumer Affairs • Legal Metrology Division
               </p>
               <div className="flex items-center space-x-2 mt-0.5">
                 <h1 className="text-lg sm:text-xl font-black text-[#0B2F5C] tracking-tight">
@@ -255,37 +233,33 @@ const Login: React.FC = () => {
           <div className="relative z-10 max-w-3xl space-y-3">
             <div className="inline-flex items-center space-x-2 bg-white/10 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm border border-white/20 text-yellow-300">
               <Award className="h-4 w-4" />
-              <span>{language === 'HI' ? 'अखिल भारतीय विधिक मापविज्ञान निगरानी एवं अनुपालन पोर्टल' : 'Official Statutory Verification & Enforcement Portal'}</span>
+              <span>Official Statutory Verification & Enforcement Portal</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black tracking-tight leading-snug">
-              {language === 'HI' 
-                ? 'पैकेज्ड वस्तुओं के लिए स्वचालित विधिक मापविज्ञान अनुपालन प्रणाली' 
-                : 'Automated AI Compliance Engine for Pre-Packaged Commodities'}
+              Automated AI Compliance Engine for Pre-Packaged Commodities
             </h2>
             <p className="text-sm text-blue-100 leading-relaxed font-normal">
-              {language === 'HI'
-                ? 'विधिक मापविज्ञान (पैकेज्ड कमोडिटीज) नियम, 2011 के अंतर्गत अनिवार्य घोषणाओं (नियम 6), इकाई विक्रय मूल्य (नियम 6(11)), और अधिकतम अनुमेय त्रुटि (अनुसूची 2) का तीव्र सत्यापन एवं ई-चालान अधिनिर्णय।'
-                : 'Empowering Field Officers, District Regulatory Authorities, and Packaged Goods Manufacturers with automated multi-panel label verification, Rule 6 statutory declaration audits, USP rate verification, MPE scale verification, and instant compounding challan generation.'}
+              Empowering Field Officers, District Regulatory Authorities, and Packaged Goods Manufacturers with automated multi-panel label verification, Rule 6 statutory declaration audits, USP rate verification, MPE scale verification, and instant compounding challan generation.
             </p>
           </div>
 
           {/* Quick Metrics Ticker */}
           <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 mt-4 border-t border-white/15 text-xs">
             <div>
-              <p className="text-blue-200">{language === 'HI' ? 'मानक अनुपालन' : 'Standards Compliance'}</p>
+              <p className="text-blue-200">Standards Compliance</p>
               <p className="font-bold text-white text-sm">GIGW 3.0 / WCAG 2.1 AA</p>
             </div>
             <div>
-              <p className="text-blue-200">{language === 'HI' ? 'साक्ष्य अखंडता' : 'Evidence Integrity'}</p>
+              <p className="text-blue-200">Evidence Integrity</p>
               <p className="font-bold text-white text-sm">SHA-256 Chain of Custody</p>
             </div>
             <div>
-              <p className="text-blue-200">{language === 'HI' ? 'वैधानिक धाराएं' : 'Statutory Act'}</p>
+              <p className="text-blue-200">Statutory Act</p>
               <p className="font-bold text-white text-sm">Sec 36(1) & Sec 39</p>
             </div>
             <div>
-              <p className="text-blue-200">{language === 'HI' ? 'निरीक्षण गति' : 'Inspection Processing'}</p>
-              <p className="font-bold text-white text-sm">&lt; 1.5s AI OCR Verification</p>
+              <p className="text-blue-200">Vision Analysis</p>
+              <p className="font-bold text-white text-sm">Google Gemini Vision API</p>
             </div>
           </div>
         </div>
@@ -303,12 +277,10 @@ const Login: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-[#D1D5DB] pb-3">
             <div>
               <h3 className="text-xl font-black text-[#0B2F5C]">
-                {language === 'HI' ? 'भूमिका अनुसार सुरक्षित पोर्टल प्रवेश (3 Role Portals)' : 'Select Your Operational Role to Access CAMS Portal'}
+                Select Your Operational Role to Access CAMS Portal
               </h3>
               <p className="text-xs text-[#6B7280]">
-                {language === 'HI' 
-                  ? 'अपने आधिकारिक कर्तव्यों के अनुसार निर्धारित पोर्टल कार्ड का चयन करें' 
-                  : 'Access authorized regulatory workspaces with role-based access control (RBAC)'}
+                Access authorized regulatory workspaces with role-based access control (RBAC)
               </p>
             </div>
             <span className="text-xs font-mono font-bold text-[#1A5699] bg-blue-50 px-2.5 py-1 rounded border border-blue-200 self-start sm:self-auto">
@@ -332,23 +304,21 @@ const Login: React.FC = () => {
 
                 <div>
                   <h4 className="text-base font-bold text-[#111827]">
-                    {language === 'HI' ? 'फील्ड विधिक मापविज्ञान निरीक्षक' : 'Field Legal Metrology Inspector'}
+                    Field Legal Metrology Inspector
                   </h4>
                   <p className="text-xs text-[#1A5699] font-semibold mt-0.5">
-                    {language === 'HI' ? 'ऑन-साइट खुदरा एवं निर्माण निरीक्षण' : 'On-Site Market Audits & Verification'}
+                    On-Site Market Audits & Verification
                   </p>
                 </div>
 
                 <p className="text-xs text-[#6B7280] leading-relaxed">
-                  {language === 'HI'
-                    ? 'दुकानों, सुपरमार्केट्स एवं गोदामों में मल्टी-पैनल पैकेज स्कैनिंग, भौतिक वजन सत्यापन (MPE अनुसूची 2), जब्ती मेमो तथा ऑफलाइन फील्ड सिंक।'
-                    : 'Execute multi-panel AI packaging OCR scans, physical scale net-weight calibration verification, on-site inspection sessions, and seizure memos.'}
+                  Execute multi-panel AI packaging scans, physical scale net-weight calibration verification, on-site inspection sessions, and seizure memos.
                 </p>
 
                 <div className="pt-2 border-t border-gray-100 space-y-1.5 text-[11px] text-gray-700">
                   <div className="flex items-center space-x-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5 text-[#16A34A]" />
-                    <span>Rule 6(1) Declarations OCR Check</span>
+                    <span>Rule 6(1) Declarations AI Inspection</span>
                   </div>
                   <div className="flex items-center space-x-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5 text-[#16A34A]" />
@@ -368,7 +338,7 @@ const Login: React.FC = () => {
                   className="w-full py-2.5 px-4 bg-[#0B2F5C] hover:bg-[#072040] text-white font-bold text-xs rounded-goi shadow-sm flex items-center justify-center space-x-2 transition-colors disabled:opacity-50"
                 >
                   <UserCheck className="h-4 w-4" />
-                  <span>{language === 'HI' ? 'फील्ड निरीक्षक के रूप में प्रवेश करें' : 'Login as Field Inspector'}</span>
+                  <span>Login as Field Inspector</span>
                 </button>
 
                 <button
@@ -379,7 +349,7 @@ const Login: React.FC = () => {
                   }}
                   className="w-full py-1.5 px-3 bg-transparent hover:bg-gray-100 text-[#0B2F5C] font-semibold text-[11px] rounded-goi border border-[#D1D5DB] flex items-center justify-center space-x-1"
                 >
-                  <span>{language === 'HI' ? 'कस्टम पासवर्ड से लॉगिन' : 'Enter Custom Credentials'}</span>
+                  <span>Enter Custom Credentials</span>
                 </button>
               </div>
             </div>
@@ -398,17 +368,15 @@ const Login: React.FC = () => {
 
                 <div>
                   <h4 className="text-base font-bold text-[#111827]">
-                    {language === 'HI' ? 'जिला विधिक मापविज्ञान अधिकारी (DLMO)' : 'District Legal Metrology Officer'}
+                    District Legal Metrology Officer
                   </h4>
                   <p className="text-xs text-[#1A5699] font-semibold mt-0.5">
-                    {language === 'HI' ? 'अधिनिर्णय, चालान एवं जिला नियंत्रण' : 'Adjudication & Supervisory Intelligence'}
+                    Adjudication & Supervisory Intelligence
                   </p>
                 </div>
 
                 <p className="text-xs text-[#6B7280] leading-relaxed">
-                  {language === 'HI'
-                    ? 'जिला एवं राष्ट्रीय अनुपालन दर विश्लेषण, धारा 36(1)/39 के तहत दंडात्मक ई-चालान जारी करना, अधिकारी निगरानी तथा नियम विन्यास।'
-                    : 'Superior district & state analytics, statutory compounding challan issuance under Section 36(1)/39, hearing scheduling, and inspector monitoring.'}
+                  Superior district & state analytics, statutory compounding challan issuance under Section 36(1)/39, hearing scheduling, and inspector monitoring.
                 </p>
 
                 <div className="pt-2 border-t border-gray-100 space-y-1.5 text-[11px] text-gray-700">
@@ -434,7 +402,7 @@ const Login: React.FC = () => {
                   className="w-full py-2.5 px-4 bg-[#0B2F5C] hover:bg-[#072040] text-white font-bold text-xs rounded-goi shadow-sm flex items-center justify-center space-x-2 transition-colors disabled:opacity-50"
                 >
                   <ShieldAlert className="h-4 w-4 text-yellow-300" />
-                  <span>{language === 'HI' ? 'डीएलएमओ अधिकारी के रूप में प्रवेश करें' : 'Login as DLMO Officer'}</span>
+                  <span>Login as DLMO Officer</span>
                 </button>
 
                 <button
@@ -445,7 +413,7 @@ const Login: React.FC = () => {
                   }}
                   className="w-full py-1.5 px-3 bg-transparent hover:bg-gray-100 text-[#0B2F5C] font-semibold text-[11px] rounded-goi border border-[#D1D5DB] flex items-center justify-center space-x-1"
                 >
-                  <span>{language === 'HI' ? 'कस्टम पासवर्ड से लॉगिन' : 'Enter Custom Credentials'}</span>
+                  <span>Enter Custom Credentials</span>
                 </button>
               </div>
             </div>
@@ -464,17 +432,15 @@ const Login: React.FC = () => {
 
                 <div>
                   <h4 className="text-base font-bold text-[#111827]">
-                    {language === 'HI' ? 'पंजीकृत निर्माता / पैकर पोर्टल' : 'Registered Manufacturer / Packer'}
+                    Registered Manufacturer / Packer
                   </h4>
                   <p className="text-xs text-[#1A5699] font-semibold mt-0.5">
-                    {language === 'HI' ? 'उद्योग पूर्व-बाजार स्व-सत्यापन डेस्क' : 'Pre-Market Self-Check & Rectification'}
+                    Pre-Market Self-Check & Rectification
                   </p>
                 </div>
 
                 <p className="text-xs text-[#6B7280] leading-relaxed">
-                  {language === 'HI'
-                    ? 'पैकेजिंग लेबल का पूर्व-बाजार एआई परीक्षण, एमआरपी टैक्स वाक्यांश व यूएसपी सत्यापन, ई-चालान उत्तर एवं सुधार साक्ष्य प्रस्तुत करना।'
-                    : 'Pre-market packaging label self-check, USP statutory compliance validation, brand compliance grading, and online challan rectification.'}
+                  Pre-market packaging label self-check, USP statutory compliance validation, brand compliance grading, and online challan rectification.
                 </p>
 
                 <div className="pt-2 border-t border-gray-100 space-y-1.5 text-[11px] text-gray-700">
@@ -500,7 +466,7 @@ const Login: React.FC = () => {
                   className="w-full py-2.5 px-4 bg-[#0B2F5C] hover:bg-[#072040] text-white font-bold text-xs rounded-goi shadow-sm flex items-center justify-center space-x-2 transition-colors disabled:opacity-50"
                 >
                   <Building2 className="h-4 w-4 text-emerald-300" />
-                  <span>{language === 'HI' ? 'निर्माता पोर्टल में प्रवेश करें' : 'Login as Registered Manufacturer'}</span>
+                  <span>Login as Registered Manufacturer</span>
                 </button>
 
                 <button
@@ -511,7 +477,7 @@ const Login: React.FC = () => {
                   }}
                   className="w-full py-1.5 px-3 bg-transparent hover:bg-gray-100 text-[#0B2F5C] font-semibold text-[11px] rounded-goi border border-[#D1D5DB] flex items-center justify-center space-x-1"
                 >
-                  <span>{language === 'HI' ? 'कस्टम पासवर्ड से लॉगिन' : 'Enter Custom Credentials'}</span>
+                  <span>Enter Custom Credentials</span>
                 </button>
               </div>
             </div>
@@ -525,9 +491,7 @@ const Login: React.FC = () => {
             <h3 className="text-base font-bold text-[#0B2F5C] flex items-center space-x-2">
               <Shield className="h-5 w-5 text-[#1A5699]" />
               <span>
-                {language === 'HI' 
-                  ? 'विधिक मापविज्ञान अधिनियम, 2009 के प्रमुख वैधानिक अनुपालन स्तंभ' 
-                  : 'Statutory Metrology Compliance Verification Pillars (PCR, 2011)'}
+                Statutory Metrology Compliance Verification Pillars (PCR, 2011)
               </span>
             </h3>
             <span className="text-xs text-gray-500 font-semibold">Standard Operating Procedures</span>

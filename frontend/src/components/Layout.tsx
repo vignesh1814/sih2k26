@@ -13,17 +13,13 @@ import {
   Book, 
   BarChart3, 
   Building2, 
-  Scale,
-  Globe,
-  Award,
-  ExternalLink
+  Scale
 } from 'lucide-react'
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [fontSizeOffset, setFontSizeOffset] = useState<number>(0)
   const [isHighContrast, setIsHighContrast] = useState<boolean>(false)
-  const [language, setLanguage] = useState<'EN' | 'HI'>('EN')
 
   const { user, logout } = useAuth()
   const { hasPermission, hasAnyRole } = useRBAC()
@@ -56,26 +52,26 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // 1. DLMO Navigation Items
     ...(isDLMO ? [
       { 
-        name: language === 'HI' ? 'डीएलएमओ एनालिटिक्स' : 'DLMO Analytics', 
+        name: 'DLMO Analytics', 
         href: '/superior-analytics', 
         icon: BarChart3, 
         badge: 'Authority',
         permission: { resource: 'superior_analytics', action: 'view' }
       },
       { 
-        name: language === 'HI' ? 'निरीक्षण रिपोर्ट एवं चालान' : 'Inspection Reports & Challans', 
+        name: 'Inspection Reports & Challans', 
         href: '/reports', 
         icon: FileText, 
         permission: { resource: 'reports', action: 'view' } 
       },
       { 
-        name: language === 'HI' ? 'ऑडिट ट्रेल' : 'Statutory Audit Trail', 
+        name: 'Statutory Audit Trail', 
         href: '/audit-trail', 
         icon: Shield, 
         permission: { resource: 'audit', action: 'view' }
       },
       { 
-        name: language === 'HI' ? 'वैधानिक नियमावली' : 'Statutory Manual (PCR)', 
+        name: 'Statutory Manual (PCR)', 
         href: '/documentation', 
         icon: Book, 
         permission: { resource: 'docs', action: 'view' } 
@@ -85,39 +81,39 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // 2. Field Inspector Navigation Items
     ...(isInspector ? [
       { 
-        name: language === 'HI' ? 'निरीक्षक डैशबोर्ड' : 'Inspector Dashboard', 
+        name: 'Inspector Dashboard', 
         href: '/dashboard', 
         icon: LayoutDashboard, 
         permission: { resource: 'dashboard', action: 'view' }
       },
       { 
-        name: language === 'HI' ? 'पैकेज लेबल स्कैन' : 'Scan Package Label', 
+        name: 'Scan Package Label', 
         href: '/scan', 
         icon: Scan, 
-        badge: 'Rule 6 OCR',
+        badge: 'AI Vision',
         permission: { resource: 'scan', action: 'create' } 
       },
-      {
-        name: language === 'HI' ? 'मात्रा सत्यापन (MPE)' : 'Physical Quantity Verification', 
+      { 
+        name: 'Physical Quantity Verification', 
         href: '/quantity', 
         icon: Scale, 
         badge: 'Sched. 2 MPE',
         permission: { resource: 'scan', action: 'create' }
       },
       { 
-        name: language === 'HI' ? 'निरीक्षण रिपोर्ट' : 'Inspection Reports', 
+        name: 'Inspection Reports', 
         href: '/reports', 
         icon: FileText, 
         permission: { resource: 'reports', action: 'view' } 
       },
-      {
-        name: language === 'HI' ? 'ऑफलाइन फील्ड सिंक' : 'Offline Field Sync', 
+      { 
+        name: 'Offline Field Sync', 
         href: '/sync', 
         icon: Shield, 
         permission: { resource: 'scan', action: 'create' }
       },
       { 
-        name: language === 'HI' ? 'वैधानिक नियमावली' : 'Statutory Manual', 
+        name: 'Statutory Manual', 
         href: '/documentation', 
         icon: Book, 
         permission: { resource: 'docs', action: 'view' } 
@@ -127,27 +123,27 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // 3. Manufacturer Navigation Items
     ...(isManufacturer ? [
       { 
-        name: language === 'HI' ? 'ब्रांड अनुपालन कंसोल' : 'Brand Compliance Portal', 
+        name: 'Brand Compliance Portal', 
         href: '/manufacturer-portal', 
         icon: Building2, 
         badge: 'Brand Console',
         permission: { resource: 'manufacturer_portal', action: 'view' }
       },
       { 
-        name: language === 'HI' ? 'पूर्व-बाजार स्व-सत्यापन' : 'Pre-Market Self-Check', 
+        name: 'Pre-Market Self-Check', 
         href: '/scan', 
         icon: Scan, 
         badge: 'Pre-Market',
         permission: { resource: 'scan', action: 'create' } 
       },
       { 
-        name: language === 'HI' ? 'निरीक्षण अभिलेखागार' : 'Inspection Archive', 
+        name: 'Inspection Archive', 
         href: '/reports', 
         icon: FileText, 
         permission: { resource: 'reports', action: 'view' } 
       },
       { 
-        name: language === 'HI' ? 'पैकेजिंग दिशानिर्देश' : 'Packaging Guidelines', 
+        name: 'Packaging Guidelines', 
         href: '/documentation', 
         icon: Book, 
         permission: { resource: 'docs', action: 'view' } 
@@ -184,22 +180,22 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <div className="min-h-screen bg-[#F4F6F9] text-[#111827] flex flex-col font-sans">
       {/* Skip to Main Content */}
       <a href="#portal-content" className="skip-link">
-        {language === 'HI' ? 'मुख्य सामग्री पर जाएं' : 'Skip to Main Content'}
+        Skip to Main Content
       </a>
 
       {/* 1. Global Top Utility Bar (GIGW 3.0) */}
       <div className="bg-[#072040] text-gray-200 text-xs border-b border-blue-900/40 px-4 sm:px-8 py-1.5 flex items-center justify-between z-30">
         <div className="flex items-center space-x-3">
           <span className="font-semibold text-gray-300">
-            {language === 'HI' ? 'भारत सरकार | Government of India' : 'Government of India | भारत सरकार'}
+            Government of India | भारत सरकार
           </span>
           <span className="hidden md:inline text-gray-400">•</span>
           <span className="hidden md:inline text-gray-300">
-            {language === 'HI' ? 'उपभोक्ता मामले विभाग' : 'Department of Consumer Affairs'}
+            Department of Consumer Affairs
           </span>
         </div>
 
-        {/* Accessibility & Language Controls */}
+        {/* Accessibility Controls */}
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1 bg-white/10 px-2 py-0.5 rounded border border-white/10">
             <button onClick={() => handleFontSizeChange(-1)} className="px-1 font-bold hover:text-white" title="Decrease Font Size (A-)">A-</button>
@@ -217,14 +213,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             title="Toggle High Contrast Mode (WCAG 2.1 AA)"
           >
             {isHighContrast ? 'Standard' : 'High Contrast'}
-          </button>
-
-          <button
-            onClick={() => setLanguage(lang => lang === 'EN' ? 'HI' : 'EN')}
-            className="px-2 py-0.5 bg-[#1A5699] hover:bg-blue-600 text-white font-bold rounded text-[11px] flex items-center space-x-1"
-          >
-            <Globe className="h-3 w-3" />
-            <span>{language === 'EN' ? 'हिन्दी' : 'English'}</span>
           </button>
         </div>
       </div>
@@ -315,7 +303,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               className="flex items-center justify-center w-full px-4 py-2.5 text-xs font-bold text-red-200 hover:text-white bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 rounded-goi transition-colors"
             >
               <LogOut className="mr-2 h-4 w-4 text-red-300" />
-              <span>{language === 'HI' ? 'सत्र समाप्त (लॉगआउट)' : 'Sign Out Session'}</span>
+              <span>Sign Out Session</span>
             </button>
           </div>
         </div>
@@ -356,7 +344,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   title="Logout session"
                 >
                   <LogOut className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{language === 'HI' ? 'लॉगआउट' : 'Logout'}</span>
+                  <span className="hidden sm:inline">Logout</span>
                 </button>
               </div>
             </div>
