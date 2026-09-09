@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { 
   fetchManufacturerDashboard, 
+  fetchChallans,
   updateChallanStatus, 
   ManufacturerDashboardData, 
   Challan 
@@ -16,7 +17,8 @@ import {
   RefreshCw,
   X,
   CreditCard,
-  Lock
+  Lock,
+  Filter
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -31,8 +33,9 @@ const PAYMENT_METHODS = [
 
 const ManufacturerPortal: React.FC = () => {
   const { user } = useAuth()
-  const brandName = user?.organization || user?.name || 'Sunrise Foods & FMCG Ltd'
   const [data, setData] = useState<ManufacturerDashboardData | null>(null)
+  const [allChallans, setAllChallans] = useState<Challan[]>([])
+  const [selectedBrandFilter, setSelectedBrandFilter] = useState<string>('ALL')
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState<'challans' | 'audits'>('challans')
@@ -52,8 +55,30 @@ const ManufacturerPortal: React.FC = () => {
     if (!silent) setIsLoading(true)
     else setIsRefreshing(true)
     try {
-      const res = await fetchManufacturerDashboard(brandName)
-      setData(res)
+      const [dashRes, challansRes] = await Promise.all([
+        fetchManufacturerDashboard(selectedBrandFilter === 'ALL' ? '' : selectedBrandFilter),
+        fetchChallans(selectedBrandFilter === 'ALL' ? undefined : selectedBrandFilter)
+      ])
+
+      const combinedList: Challan[] = (challansRes && challansRes.challans && challansRes.challans.length > 0)
+        ? challansRes.challans
+        : (dashRes?.challans || [])
+
+      setAllChallans(combinedList)
+
+      const pending = combinedList.filter(c => c.status === 'ISSUED' || c.status === 'ACKNOWLEDGED' || c.status === 'RECTIFIED')
+      const totalPenalties = pending.reduce((acc, c) => acc + (c.penalty_amount || 0), 0)
+
+      setData({
+        brand_name: selectedBrandFilter === 'ALL' ? 'All Registered Establishments' : selectedBrandFilter,
+        compliance_grade: dashRes?.compliance_grade || 'Grade B (Monitored)',
+        total_inspections_conducted: dashRes?.total_inspections_conducted || combinedList.length + 10,
+        compliance_rate: dashRes?.compliance_rate || '82%',
+        active_challans_count: pending.length,
+        total_penalties_assessed: totalPenalties,
+        challans: combinedList,
+        inspections: dashRes?.inspections || []
+      })
     } catch (err) {
       console.error('Failed to load manufacturer dashboard:', err)
       toast.error('Could not load brand data')
@@ -65,14 +90,26 @@ const ManufacturerPortal: React.FC = () => {
 
   useEffect(() => {
     loadData()
-    // Periodic sync every 15 seconds to catch superior issued challans automatically
-    const interval = setInterval(() => loadData(true), 15000)
+    // Periodic auto-sync every 10 seconds so newly issued challans update automatically
+    const interval = setInterval(() => loadData(true), 10000)
     return () => clearInterval(interval)
-  }, [brandName])
+  }, [selectedBrandFilter])
+
+  // Extract unique brands for filtering
+  const availableBrands = Array.from(
+    new Set([
+      'ALL',
+      'Sunrise Foods & FMCG Ltd',
+      'Himalayan Dry Fruits Pvt Ltd',
+      'Shree Balaji Confectioneries',
+      'Ananda Dairy & Agro Foods',
+      ...allChallans.map(c => c.manufacturer_name).filter(Boolean)
+    ])
+  )
 
   const handleUpdateStatus = async (challanId: string, status: string) => {
     try {
-      await updateChallanStatus(challanId, status, responseText, proofUrl, undefined, 'Sunrise Compliance Desk')
+      await updateChallanStatus(challanId, status, responseText, proofUrl, undefined, user?.name || 'Manufacturer Compliance Desk')
       toast.success(`Challan status updated to: ${status}`)
       setSelectedChallan(null)
       setResponseText('')
@@ -93,7 +130,7 @@ const ManufacturerPortal: React.FC = () => {
         `Settled via ${selectedPaymentMode}`, 
         undefined, 
         selectedPaymentMode, 
-        'Sunrise Compliance Officer'
+        user?.name || 'Authorized Manufacturer Representative'
       )
       
       setPaymentSuccessReceipt({
@@ -129,14 +166,30 @@ const ManufacturerPortal: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2.5 mb-1.5">
             <span className="p-1.5 bg-emerald-600 rounded-lg text-xs font-black uppercase tracking-wider">Manufacturer Console</span>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight">{data?.brand_name || 'Registered Manufacturer Desk'}</h1>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight">{data?.brand_name || 'Manufacturer & Packer Portal'}</h1>
           </div>
           <p className="text-xs sm:text-sm text-emerald-200">
             Corporate Compliance Desk • Statutory Notice Management • Product Inspection Audit Records • Fine Settlement
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Brand Quick Selector */}
+          <div className="flex items-center space-x-1.5 bg-black/40 px-3 py-1.5 rounded-xl border border-white/10 text-xs">
+            <Filter className="h-3.5 w-3.5 text-emerald-400" />
+            <select
+              value={selectedBrandFilter}
+              onChange={(e) => setSelectedBrandFilter(e.target.value)}
+              className="bg-transparent text-white font-bold outline-none cursor-pointer text-xs"
+            >
+              {availableBrands.map(b => (
+                <option key={b} value={b} className="bg-slate-900 text-white">
+                  {b === 'ALL' ? '🏢 All Brands & Establishments' : b}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={() => {
               loadData(true)
@@ -226,7 +279,7 @@ const ManufacturerPortal: React.FC = () => {
           }`}
         >
           <FileWarning className="h-4 w-4" />
-          <span>Received Challans &amp; Payment Settlement ({data?.challans.length || 0})</span>
+          <span>Received Challans &amp; Payment Settlement ({allChallans.length})</span>
         </button>
 
         <button
@@ -245,7 +298,7 @@ const ManufacturerPortal: React.FC = () => {
       {/* TAB 1: RECEIVED CHALLANS & PAYMENT */}
       {activeTab === 'challans' && (
         <div className="space-y-4">
-          {data?.challans.map((ch: Challan) => (
+          {allChallans.map((ch: Challan) => (
             <div key={ch.challan_id} className={`bg-white rounded-2xl border shadow-sm p-5 sm:p-6 transition-all ${
               ch.status === 'PAID' ? 'border-emerald-200 bg-emerald-50/20' : 'border-gray-200 hover:border-emerald-300'
             }`}>
@@ -268,7 +321,12 @@ const ManufacturerPortal: React.FC = () => {
                     </span>
                   </div>
                   <h3 className="text-base font-bold text-gray-900">{ch.product_name}</h3>
-                  <p className="text-xs text-gray-500">Issued by: {ch.issued_by} ({ch.issued_by_role || 'DLMO'}) • {ch.inspector_name}</p>
+                  <p className="text-xs text-emerald-800 font-semibold mt-0.5">
+                    Manufacturer / Entity: {ch.manufacturer_name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Issued by: {ch.issued_by} ({ch.issued_by_role || 'DLMO'}) • {ch.inspector_name}
+                  </p>
                 </div>
 
                 <div className="text-right">
@@ -292,7 +350,7 @@ const ManufacturerPortal: React.FC = () => {
                     <span>Statutory Rule Violations Cited:</span>
                   </p>
                   <ul className="space-y-1 text-rose-800">
-                    {ch.violation_codes.map((v: string, i: number) => (
+                    {(ch.violation_codes || []).map((v: string, i: number) => (
                       <li key={i}>• {v}</li>
                     ))}
                   </ul>
@@ -304,7 +362,7 @@ const ManufacturerPortal: React.FC = () => {
                     <span>Legal Provisions Cited:</span>
                   </p>
                   <ul className="space-y-1 text-slate-700">
-                    {ch.act_sections.map((s: string, i: number) => (
+                    {(ch.act_sections || []).map((s: string, i: number) => (
                       <li key={i}>• {s}</li>
                     ))}
                   </ul>
@@ -367,7 +425,7 @@ const ManufacturerPortal: React.FC = () => {
             </div>
           ))}
 
-          {(!data?.challans || data.challans.length === 0) && (
+          {allChallans.length === 0 && (
             <div className="bg-white p-12 text-center rounded-2xl border border-gray-200">
               <ShieldCheck className="h-12 w-12 text-emerald-500 mx-auto mb-2" />
               <p className="font-bold text-gray-800">No active challans pending</p>
@@ -461,6 +519,10 @@ const ManufacturerPortal: React.FC = () => {
                   <div className="flex justify-between">
                     <span className="text-gray-600 font-semibold">Product:</span>
                     <span className="font-bold text-gray-900">{payingChallan.product_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 font-semibold">Manufacturer:</span>
+                    <span className="font-bold text-gray-700">{payingChallan.manufacturer_name}</span>
                   </div>
                   <div className="flex justify-between items-center pt-1 border-t border-emerald-200">
                     <span className="text-gray-800 font-bold">Total Compounding Fine:</span>
